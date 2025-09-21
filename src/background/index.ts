@@ -23,8 +23,12 @@ const sendRuntimeMessageSafe = (payload: any) => {
     try {
         chrome.runtime.sendMessage(payload, () => {
             const error = chrome.runtime.lastError
-            if (error && error.message && !error.message.includes('Receiving end does not exist')) {
-                console.warn('[superowser] Failed to deliver runtime message:', error.message)
+            if (error && error.message) {
+                const message = error.message
+                if (message.includes('Receiving end does not exist') || message.includes('Could not establish connection')) {
+                    return
+                }
+                console.warn('[superowser] Failed to deliver runtime message:', message)
             }
         })
     } catch (error) {
@@ -198,23 +202,7 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                     console.warn('Failed to auto-open side panel from omnibox task activation:', openError);
                 }
 
-                const deliverResults = () => {
-                    sendRuntimeMessageSafe({
-                        type: 'OMNIBOX_RESULTS',
-                        data: {
-                            query: text,
-                            mode: 'task',
-                            task: result.task,
-                            results
-                        }
-                    });
-                };
-
-                if (panelOpened) {
-                    setTimeout(deliverResults, 500);
-                } else {
-                    deliverResults();
-                }
+                // task-activate is handled via background state updates; no side panel push needed here.
             }
         } else if (result.type === 'filter' || result.type === 'search') {
             // Handle search/filter results
@@ -244,21 +232,21 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                             console.warn('Failed to auto-open side panel from omnibox input:', openError);
                         }
 
-                        const deliverResults = () => {
-                            sendRuntimeMessageSafe({
-                                type: 'OMNIBOX_RESULTS',
-                                data: {
-                                    query: text,
-                                    results: result.results
-                                }
-                            });
-                        };
-
-                        if (panelOpened) {
-                            setTimeout(deliverResults, 500);
-                        } else {
-                            deliverResults();
+                const deliverResults = () => {
+                    sendRuntimeMessageSafe({
+                        type: 'OMNIBOX_RESULTS',
+                        data: {
+                            query: text,
+                            results: result.results
                         }
+                    });
+                };
+
+                if (panelOpened) {
+                    setTimeout(deliverResults, 500);
+                } else {
+                    deliverResults();
+                }
                     }
                 }
             } else {
@@ -295,6 +283,11 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
                         title: tab.title,
                         favicon: tab.favIconUrl
                     }
+                }, () => {
+                    const error = chrome.runtime.lastError
+                    if (error && error.message && !error.message.includes('Receiving end does not exist') && !error.message.includes('Could not establish connection')) {
+                        console.debug('Could not notify side panel of tab change:', error.message);
+                    }
                 });
             } catch (error) {
                 // Side panel might not be open - ignore error
@@ -320,6 +313,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
                     url: tab.url,
                     title: tab.title,
                     favicon: tab.favIconUrl
+                }
+            }, () => {
+                const error = chrome.runtime.lastError
+                if (error && error.message && !error.message.includes('Receiving end does not exist') && !error.message.includes('Could not establish connection')) {
+                    console.debug('Could not notify side panel of tab update:', error.message);
                 }
             });
         } catch (error) {

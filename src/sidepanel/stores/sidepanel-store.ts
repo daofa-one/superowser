@@ -477,6 +477,31 @@ export const useSidePanelStore = defineStore('sidepanel', {
         return
       }
 
+      if (path.startsWith('user.')) {
+        const [, ...rest] = path.split('.').filter(Boolean)
+        if (rest.length === 0) {
+          return
+        }
+
+        const [firstKey, ...remainingKeys] = rest
+        if (typeof (this.cache as any)[firstKey] === 'undefined') {
+          (this.cache as any)[firstKey] = {}
+        }
+
+        let target = (this.cache as any)[firstKey]
+
+        for (let i = 0; i < remainingKeys.length - 1; i++) {
+          const key = remainingKeys[i]
+          if (typeof target[key] !== 'object' || target[key] === null) {
+            target[key] = {}
+          }
+          target = target[key]
+        }
+
+        target[remainingKeys[remainingKeys.length - 1]] = value
+        return
+      }
+
       const keys = path.split('.').filter(Boolean)
       if (keys.length === 0) {
         return
@@ -526,7 +551,12 @@ export const useSidePanelStore = defineStore('sidepanel', {
                 // Check for specific connection errors
                 if (lastError.message?.includes('Could not establish connection') ||
                     lastError.message?.includes('Receiving end does not exist')) {
-                  reject(new Error('Background script not ready'))
+                  resolve({
+                    type: 'ERROR',
+                    error: {
+                      message: 'Background script not ready'
+                    }
+                  })
                 } else {
                   reject(new Error(lastError.message))
                 }
@@ -545,15 +575,20 @@ export const useSidePanelStore = defineStore('sidepanel', {
           const errorMessage = error instanceof Error ? error.message : String(error)
 
           // Only retry for connection errors
-          if (errorMessage.includes('Background script not ready') && attempt < retries - 1) {
-            console.warn(`Connection attempt ${attempt + 1} failed, retrying in ${(attempt + 1) * 100}ms...`)
-            await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 100))
-            continue
+          if (errorMessage.includes('Background script not ready')) {
+            if (attempt < retries - 1) {
+              console.warn(`Connection attempt ${attempt + 1} failed, retrying in ${(attempt + 1) * 100}ms...`)
+              await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 100))
+              continue
+            }
+            return { type: 'ERROR', error: { message: errorMessage } }
           }
 
           throw error
         }
       }
+
+      return { type: 'ERROR', error: { message: 'Request failed' } }
     },
 
     // Check if background connection is available

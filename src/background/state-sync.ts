@@ -148,11 +148,16 @@ function broadcastStateUpdate(path: string, value: any) {
 
   // Try to send to all extension contexts
   try {
-    chrome.runtime.sendMessage(message).catch(() => {
-      // Ignore errors - side panel might not be open
+    chrome.runtime.sendMessage(message, () => {
+      const error = chrome.runtime.lastError
+      if (error && error.message) {
+        if (error.message.includes('Receiving end does not exist') || error.message.includes('Could not establish connection')) {
+          return
+        }
+        console.debug('Failed to broadcast state update:', error.message)
+      }
     })
   } catch (error) {
-    // Extension context might not be available
     console.debug('Failed to broadcast state update:', error)
   }
 }

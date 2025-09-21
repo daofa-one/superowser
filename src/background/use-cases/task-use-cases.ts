@@ -61,6 +61,8 @@ export class TaskUseCases {
       }
     }
 
+    this.notifyTaskChange(activeTask)
+
     return activeTask
   }
 
@@ -277,5 +279,24 @@ export class TaskUseCases {
 
   async openAllPagesInTask(taskName: string): Promise<PageEntry[]> {
     return this.pageService.getByTask(taskName)
+  }
+
+  private notifyTaskChange(task: TaskEntry) {
+    try {
+      chrome.runtime.sendMessage({
+        type: 'TASK_CHANGED',
+        data: task
+      }, () => {
+        const error = chrome.runtime.lastError
+        if (error && error.message) {
+          if (error.message.includes('Receiving end does not exist') || error.message.includes('Could not establish connection')) {
+            return
+          }
+          console.warn('Failed to broadcast TASK_CHANGED message:', error.message)
+        }
+      })
+    } catch (error) {
+      console.warn('Failed to broadcast TASK_CHANGED message:', error)
+    }
   }
 }
