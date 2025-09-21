@@ -35,15 +35,6 @@ const hasNotes = computed(() => {
   return currentPage.value?.noteCount > 0
 })
 
-const canAddToTask = computed(() => {
-  return store.cache.currentTask && !isPageSaved.value
-})
-
-const taskActionLabel = computed(() => {
-  if (isPageSaved.value) return 'Saved to Task'
-  if (store.cache.currentTask) return `Add to "${store.cache.currentTask.name}"`
-  return 'No Active Task'
-})
 
 // Methods
 const loadCurrentPageInfo = async () => {
@@ -109,28 +100,6 @@ const loadCurrentPageInfo = async () => {
   }
 }
 
-const addToCurrentTask = async () => {
-  if (!canAddToTask.value || !currentPage.value) return
-
-  try {
-    await store.saveCurrentPage({
-      task: store.cache.currentTask?.name
-    })
-
-    isPageSaved.value = true
-
-    // Reload page info to get updated data
-    await loadCurrentPageInfo()
-  } catch (error) {
-    console.error('Failed to add page to task:', error)
-  }
-}
-
-const saveWithOptions = async () => {
-  // This could open a dialog for advanced save options
-  // For now, just save with current task
-  await addToCurrentTask()
-}
 
 const openPage = () => {
   if (currentPage.value?.url) {
@@ -520,34 +489,7 @@ onUnmounted(() => {
 
       <!-- Action Section: Buttons -->
       <div class="action-section">
-        <div class="primary-actions">
-          <button
-            v-if="canAddToTask"
-            class="btn btn-primary"
-            :disabled="store.ui.isLoading"
-            @click="addToCurrentTask"
-          >
-            {{ taskActionLabel }}
-          </button>
-
-          <button
-            v-else-if="isPageSaved"
-            class="btn btn-success"
-            disabled
-          >
-            ✓ {{ taskActionLabel }}
-          </button>
-
-          <button
-            v-else
-            class="btn btn-secondary"
-            @click="saveWithOptions"
-          >
-            Save Page
-          </button>
-        </div>
-
-        <div class="secondary-actions">
+        <div class="action-buttons">
           <button class="btn btn-icon" title="Save page" @click="toggleSaveForm">
             👍
           </button>
@@ -908,16 +850,11 @@ onUnmounted(() => {
 /* Action Section */
 .action-section {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  gap: 8px;
 }
 
-.primary-actions {
-  flex: 1;
-}
-
-.secondary-actions {
+.action-buttons {
   display: flex;
   gap: 4px;
 }
