@@ -272,20 +272,38 @@ const confirmActiveTask = async () => {
 
   // Optimistically apply the choice so the UI refreshes instantly.
   await applyCurrentTask(nextTask)
-      showTaskSelector.value = false
 
-      if (response.data) {
-        await applyCurrentTask(response.data)
-      } else {
-        await loadCurrentTask()
-      }
+  try {
+    const response = await store.sendMessage({
+      type: 'SET_ACTIVE_TASK',
+      data: { taskName: desiredName }
+    })
 
-      store.addNotification({
-    type: 'success',
-    message: `Set "${nextTask.name}" as active task`
-  })
+    showTaskSelector.value = false
 
-  await loadAvailableTasks()
+    if (response?.type === 'SUCCESS' && response.data) {
+      await applyCurrentTask(response.data)
+    } else {
+      await loadCurrentTask()
+    }
+
+    store.addNotification({
+      type: 'success',
+      message: `Set "${nextTask.name}" as active task`
+    })
+
+    await loadAvailableTasks()
+  } catch (error) {
+    console.error('Failed to set active task:', error)
+    // Revert optimistic update
+    await applyCurrentTask(previousTask)
+    taskPages.value = previousPages
+
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to set active task'
+    })
+  }
 }
 
 const handleTaskActivation = async (taskName: string) => {

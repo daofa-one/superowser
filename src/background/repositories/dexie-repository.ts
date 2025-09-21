@@ -135,7 +135,7 @@ export class DexiePageService implements IPageService {
     if (!normalized) {
       return []
     }
-    return await db.pages.where('tasks').equals(normalized).toArray()
+    return await db.pages.where('tasks').anyOf([normalized]).toArray()
   }
 
   async getByTags(tags: string[]): Promise<PageEntry[]> {
@@ -219,7 +219,7 @@ export class DexieNoteService implements INoteService {
     if (!normalized) {
       return []
     }
-    return await db.notes.where('tasks').equals(normalized).toArray()
+    return await db.notes.where('tasks').anyOf([normalized]).toArray()
   }
 
   async getByTags(tags: string[]): Promise<NoteEntry[]> {
@@ -303,7 +303,7 @@ export class DexieTaskService implements ITaskService {
   }
 
   async getActive(): Promise<TaskEntry | null> {
-    const active = await db.tasks.where('isActive').equals(true).first()
+    const active = await db.tasks.filter(task => task.isActive === true).first()
     if (!active) {
       return null
     }
@@ -325,7 +325,7 @@ export class DexieTaskService implements ITaskService {
 
   async setActive(id: string): Promise<TaskEntry> {
     // Deactivate all tasks first
-    await db.tasks.where('isActive').equals(true).modify({ isActive: false })
+    await db.tasks.filter(task => task.isActive === true).modify({ isActive: false })
     // Activate the selected task
     await db.tasks.update(id, { isActive: true, updatedAt: now() })
     const task = await this.getById(id)

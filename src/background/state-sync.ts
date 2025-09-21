@@ -47,10 +47,8 @@ export function initializeStateSync() {
     }
 
     if (message.type === 'GET_RECENT_PAGES') {
-      sendResponse({
-        type: 'SUCCESS',
-        data: backgroundStore.user.workingSet
-      })
+      // This is now handled in the main message handler in index.ts
+      // through container.pageUseCases.getRecentPages()
       return false
     }
 

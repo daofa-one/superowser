@@ -51,7 +51,7 @@ export class SearchUseCases {
         score: 1,
         tags: page.tags,
         shortcut: page.shortcut,
-        task: page.task
+        tasks: page.tasks
       }))
       return { type: 'filter', results }
     }
@@ -73,7 +73,7 @@ export class SearchUseCases {
           score: 1,
           tags: page.tags,
           shortcut: page.shortcut,
-          task: page.task
+          tasks: page.tasks
         })),
         ...notes.map(note => ({
           type: 'note' as const,
@@ -82,7 +82,7 @@ export class SearchUseCases {
           snippet: note.comment || '',
           score: 1,
           tags: note.tags,
-          task: note.task
+          tasks: note.tasks
         }))
       ]
 
@@ -100,7 +100,7 @@ export class SearchUseCases {
         snippet: note.comment || '',
         score: 1,
         tags: note.tags,
-        task: note.task
+        tasks: note.tasks
       }))
       return { type: 'search', results }
     }
@@ -136,7 +136,7 @@ export class SearchUseCases {
       let contextScore = result.score
 
       // Boost if same task as active task
-      if (context.activeTask && result.task === context.activeTask) {
+      if (context.activeTask && result.tasks.includes(context.activeTask)) {
         contextScore += 0.3
       }
 

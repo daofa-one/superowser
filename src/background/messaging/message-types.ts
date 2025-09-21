@@ -143,6 +143,10 @@ export interface SaveTagsMessage extends BaseMessage {
   data: { url: string; tags: string[] }
 }
 
+export interface GetRecentPagesMessage extends BaseMessage {
+  type: 'GET_RECENT_PAGES'
+}
+
 // Union type for all request messages
 export type RequestMessage =
   | SavePageMessage
@@ -170,6 +174,7 @@ export type RequestMessage =
   | ImportDataMessage
   | SaveShortcutMessage
   | SaveTagsMessage
+  | GetRecentPagesMessage
 
 // Response messages from background to side panel
 export interface SuccessResponse<T = any> extends BaseMessage {

@@ -208,6 +208,28 @@ export const useBackgroundStore = defineStore('background', {
   },
 
   actions: {
+    // Initialize store with persisted data
+    async initialize(container?: any) {
+      try {
+        if (!container) {
+          throw new Error('Container instance is required for initialization')
+        }
+
+        // Load active task from database
+        const activeTask = await container.taskUseCases.getActiveTask()
+
+        if (activeTask) {
+          this.user.currentTask = activeTask
+          console.log('[Background Store] Loaded active task:', activeTask.name)
+        }
+
+        // Mark app as initialized
+        this.app.isFirstRun = false
+      } catch (error) {
+        console.error('[Background Store] Failed to initialize:', error)
+      }
+    },
+
     // Browser state management
     updateCurrentTab(tab: chrome.tabs.Tab) {
       if (this.browser.currentTab?.url !== tab.url) {

@@ -48,7 +48,20 @@ export class TaskUseCases {
       task = await this.taskService.create(normalizedName)
     }
 
-    return this.taskService.setActive(task.id)
+    const activeTask = await this.taskService.setActive(task.id)
+
+    // Update background store with the new active task
+    // Note: This will be called from the background script, so we can access the store directly
+    try {
+      const { useBackgroundStore } = await import('../stores/background-store')
+      const backgroundStore = useBackgroundStore()
+      await backgroundStore.setCurrentTask(activeTask)
+    } catch (error) {
+      console.warn('Could not update background store:', error)
+      // This is not critical for functionality, so we continue
+    }
+
+    return activeTask
   }
 
   async getActiveTask(): Promise<TaskEntry | null> {
@@ -113,7 +126,11 @@ export class TaskUseCases {
     await this.taskService.removePage(task.id, pageId)
 
     // Update page to remove task association
-    await this.pageService.update(pageId, { task: undefined })
+    const page = await this.pageService.getById(pageId)
+    if (page) {
+      const updatedTasks = page.tasks.filter(t => t !== normalizedName)
+      await this.pageService.update(pageId, { tasks: updatedTasks })
+    }
   }
 
   async renameTask(oldName: string, newName: string): Promise<TaskEntry> {
@@ -136,17 +153,19 @@ export class TaskUseCases {
     // Update all pages in this task
     const pages = await this.pageService.getByTask(normalizedOldName)
     await Promise.all(
-      pages.map(page =>
-        this.pageService.update(page.id, { task: normalizedNewName })
-      )
+      pages.map(page => {
+        const updatedTasks = page.tasks.map(t => t === normalizedOldName ? normalizedNewName : t)
+        return this.pageService.update(page.id, { tasks: updatedTasks })
+      })
     )
 
     // Update all notes in this task
     const notes = await this.noteService.getByTask(normalizedOldName)
     await Promise.all(
-      notes.map(note =>
-        this.noteService.update(note.id, { task: normalizedNewName })
-      )
+      notes.map(note => {
+        const updatedTasks = note.tasks.map(t => t === normalizedOldName ? normalizedNewName : t)
+        return this.noteService.update(note.id, { tasks: updatedTasks })
+      })
     )
 
     return updatedTask
@@ -171,17 +190,27 @@ export class TaskUseCases {
     // Update all pages from source to target
     const sourcePages = await this.pageService.getByTask(normalizedSource)
     await Promise.all(
-      sourcePages.map(page =>
-        this.pageService.update(page.id, { task: normalizedTarget })
-      )
+      sourcePages.map(page => {
+        const updatedTasks = page.tasks.map(t => t === normalizedSource ? normalizedTarget : t)
+        // Also add target task if not already present
+        if (!updatedTasks.includes(normalizedTarget)) {
+          updatedTasks.push(normalizedTarget)
+        }
+        return this.pageService.update(page.id, { tasks: updatedTasks })
+      })
     )
 
     // Update all notes from source to target
     const sourceNotes = await this.noteService.getByTask(normalizedSource)
     await Promise.all(
-      sourceNotes.map(note =>
-        this.noteService.update(note.id, { task: normalizedTarget })
-      )
+      sourceNotes.map(note => {
+        const updatedTasks = note.tasks.map(t => t === normalizedSource ? normalizedTarget : t)
+        // Also add target task if not already present
+        if (!updatedTasks.includes(normalizedTarget)) {
+          updatedTasks.push(normalizedTarget)
+        }
+        return this.noteService.update(note.id, { tasks: updatedTasks })
+      })
     )
 
     // Merge tasks in database

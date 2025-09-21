@@ -2,12 +2,32 @@
 
 import { defineStore } from 'pinia'
 import { PageEntry, TaskEntry, SearchResult } from '../../shared/models'
-import type {
-  BrowserSearchQuery,
-  ExtensionSearchQuery,
-  BrowserChatMessage,
-  ExtensionChatMessage
-} from '../../../background/stores/background-store'
+// Types for search and chat history
+export interface BrowserSearchQuery {
+  query: string
+  source: 'browser'
+  timestamp: Date
+}
+
+export interface ExtensionSearchQuery {
+  query: string
+  source: 'extension'
+  context?: string
+  timestamp: Date
+}
+
+export interface BrowserChatMessage {
+  content: string
+  source: 'browser'
+  timestamp: Date
+}
+
+export interface ExtensionChatMessage {
+  content: string
+  source: 'extension'
+  command?: string
+  timestamp: Date
+}
 
 export interface UIState {
   // Navigation
@@ -139,13 +159,13 @@ export const useSidePanelStore = defineStore('sidepanel', {
     // Combined histories for display
     combinedSearchHistory: (state) => {
       return state.cache.recentSearches
-        .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+        .sort((a: BrowserSearchQuery | ExtensionSearchQuery, b: BrowserSearchQuery | ExtensionSearchQuery) => b.timestamp.getTime() - a.timestamp.getTime())
         .slice(0, 50) // Last 50 for UI performance
     },
 
     combinedChatHistory: (state) => {
       return state.cache.recentChats
-        .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+        .sort((a: BrowserChatMessage | ExtensionChatMessage, b: BrowserChatMessage | ExtensionChatMessage) => b.timestamp.getTime() - a.timestamp.getTime())
         .slice(0, 50)
     },
 
@@ -160,9 +180,9 @@ export const useSidePanelStore = defineStore('sidepanel', {
 
       // Recent extension searches for auto-complete
       state.cache.recentSearches
-        .filter(s => s.source === 'extension')
+        .filter((s: BrowserSearchQuery | ExtensionSearchQuery) => s.source === 'extension')
         .slice(0, 5)
-        .forEach(search => {
+        .forEach((search: BrowserSearchQuery | ExtensionSearchQuery) => {
           suggestions.push({
             type: 'search',
             content: search.query,
@@ -173,9 +193,9 @@ export const useSidePanelStore = defineStore('sidepanel', {
 
       // Recent browser searches for context
       state.cache.recentSearches
-        .filter(s => s.source === 'browser')
+        .filter((s: BrowserSearchQuery | ExtensionSearchQuery) => s.source === 'browser')
         .slice(0, 3)
-        .forEach(search => {
+        .forEach((search: BrowserSearchQuery | ExtensionSearchQuery) => {
           suggestions.push({
             type: 'search',
             content: search.query,
@@ -335,7 +355,7 @@ export const useSidePanelStore = defineStore('sidepanel', {
       } catch (error) {
         this.addNotification({
           type: 'error',
-          message: `Search failed: ${error.message}`
+          message: `Search failed: ${error instanceof Error ? error.message : String(error)}`
         })
       } finally {
         this.setLoading(false)
@@ -368,7 +388,7 @@ export const useSidePanelStore = defineStore('sidepanel', {
       } catch (error) {
         this.addNotification({
           type: 'error',
-          message: `Chat failed: ${error.message}`
+          message: `Chat failed: ${error instanceof Error ? error.message : String(error)}`
         })
       } finally {
         this.setLoading(false)
@@ -379,10 +399,15 @@ export const useSidePanelStore = defineStore('sidepanel', {
       this.setLoading(true)
 
       try {
-        await this.sendMessage({
+        const response = await this.sendMessage({
           type: 'SET_ACTIVE_TASK',
           data: { taskName }
         })
+
+        if (response?.type === 'SUCCESS' && response.data) {
+          // Update local cache with the new active task
+          this.cache.currentTask = response.data
+        }
 
         this.addNotification({
           type: 'success',
@@ -392,7 +417,7 @@ export const useSidePanelStore = defineStore('sidepanel', {
       } catch (error) {
         this.addNotification({
           type: 'error',
-          message: `Failed to switch task: ${error.message}`
+          message: `Failed to switch task: ${error instanceof Error ? error.message : String(error)}`
         })
       } finally {
         this.setLoading(false)
@@ -426,7 +451,7 @@ export const useSidePanelStore = defineStore('sidepanel', {
       } catch (error) {
         this.addNotification({
           type: 'error',
-          message: `Failed to save page: ${error.message}`
+          message: `Failed to save page: ${error instanceof Error ? error.message : String(error)}`
         })
       } finally {
         this.setLoading(false)
@@ -446,27 +471,71 @@ export const useSidePanelStore = defineStore('sidepanel', {
     },
 
     // Utility method for sending messages to background
-    async sendMessage(message: any): Promise<any> {
-      return new Promise((resolve, reject) => {
-        const messageWithId = {
-          ...message,
-          id: crypto.randomUUID()
+    async sendMessage(message: any, retries = 3): Promise<any> {
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          return await new Promise((resolve, reject) => {
+            // Check if extension context is still valid
+            if (!chrome.runtime?.id) {
+              reject(new Error('Extension context invalidated'))
+              return
+            }
+
+            const messageWithId = {
+              ...message,
+              id: crypto.randomUUID()
+            }
+
+            chrome.runtime.sendMessage(messageWithId, (response: any) => {
+              const lastError = chrome.runtime.lastError
+
+              if (lastError) {
+                // Check for specific connection errors
+                if (lastError.message?.includes('Could not establish connection') ||
+                    lastError.message?.includes('Receiving end does not exist')) {
+                  reject(new Error('Background script not ready'))
+                } else {
+                  reject(new Error(lastError.message))
+                }
+                return
+              }
+
+              if (response?.type === 'ERROR') {
+                reject(new Error(response.error.message))
+                return
+              }
+
+              resolve(response)
+            })
+          })
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+
+          // Only retry for connection errors
+          if (errorMessage.includes('Background script not ready') && attempt < retries - 1) {
+            console.warn(`Connection attempt ${attempt + 1} failed, retrying in ${(attempt + 1) * 100}ms...`)
+            await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 100))
+            continue
+          }
+
+          throw error
+        }
+      }
+    },
+
+    // Check if background connection is available
+    async checkConnection(): Promise<boolean> {
+      try {
+        if (!chrome.runtime?.id) {
+          return false
         }
 
-        chrome.runtime.sendMessage(messageWithId, (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message))
-            return
-          }
-
-          if (response?.type === 'ERROR') {
-            reject(new Error(response.error.message))
-            return
-          }
-
-          resolve(response)
-        })
-      })
+        await this.sendMessage({ type: 'GET_CURRENT_TAB_INFO' }, 1)
+        return true
+      } catch (error) {
+        console.warn('Background connection not available:', error)
+        return false
+      }
     },
 
     // Initialize store by fetching initial data from background
@@ -474,6 +543,14 @@ export const useSidePanelStore = defineStore('sidepanel', {
       this.setLoading(true)
 
       try {
+        // Check connection first
+        const connectionAvailable = await this.checkConnection()
+        if (!connectionAvailable) {
+          console.warn('Background script not ready, using fallback state')
+          this.setLoading(false)
+          return
+        }
+
         // Fetch initial shared state
         const [currentTask, recentPages, currentTab] = await Promise.all([
           this.sendMessage({ type: 'GET_ACTIVE_TASK' }),

@@ -43,18 +43,7 @@ const loadCurrentPageInfo = async () => {
     console.log('Loading current page info...')
 
     // Get current tab info via background script
-    const response = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(
-        { type: 'GET_CURRENT_TAB_INFO' },
-        (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message))
-            return
-          }
-          resolve(response)
-        }
-      )
-    })
+    const response = await store.sendMessage({ type: 'GET_CURRENT_TAB_INFO' })
 
     console.log('Background response:', response)
 
@@ -63,14 +52,10 @@ const loadCurrentPageInfo = async () => {
       console.log('Tab data:', tabData)
 
       // Check if this page is already saved in the database
-      const savedPageResponse = await new Promise((resolve) => {
-        chrome.runtime.sendMessage(
-          { type: 'GET_PAGE_BY_URL', data: { url: tabData.url } },
-          (response: any) => {
-            resolve(response)
-          }
-        )
-      }) as any
+      const savedPageResponse = await store.sendMessage({
+        type: 'GET_PAGE_BY_URL',
+        data: { url: tabData.url }
+      })
 
       let savedPage = null
       if (savedPageResponse && savedPageResponse.type === 'SUCCESS' && savedPageResponse.data) {
@@ -149,24 +134,13 @@ const saveShortcut = async () => {
   if (!currentPage.value || !shortcutInput.value.trim()) return
 
   try {
-    const response = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(
-        {
-          type: 'SAVE_SHORTCUT',
-          data: {
-            url: currentPage.value.url,
-            shortcut: shortcutInput.value.trim()
-          }
-        },
-        (response: any) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message))
-            return
-          }
-          resolve(response)
-        }
-      )
-    }) as any
+    const response = await store.sendMessage({
+      type: 'SAVE_SHORTCUT',
+      data: {
+        url: currentPage.value.url,
+        shortcut: shortcutInput.value.trim()
+      }
+    })
 
     if (response && response.type === 'SUCCESS') {
       // Update current page with the new shortcut
@@ -222,24 +196,13 @@ const saveTags = async () => {
   if (!currentPage.value) return
 
   try {
-    const response = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(
-        {
-          type: 'SAVE_TAGS',
-          data: {
-            url: currentPage.value.url,
-            tags: currentTags.value
-          }
-        },
-        (response: any) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message))
-            return
-          }
-          resolve(response)
-        }
-      )
-    }) as any
+    const response = await store.sendMessage({
+      type: 'SAVE_TAGS',
+      data: {
+        url: currentPage.value.url,
+        tags: currentTags.value
+      }
+    })
 
     if (response && response.type === 'SUCCESS') {
       // Update current page with the new tags
@@ -270,18 +233,7 @@ const cancelTags = () => {
 
 const loadAvailableTasks = async () => {
   try {
-    const response = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(
-        { type: 'GET_TASKS' },
-        (response: any) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message))
-            return
-          }
-          resolve(response)
-        }
-      )
-    }) as any
+    const response = await store.sendMessage({ type: 'GET_TASKS' })
 
     if (response && response.type === 'SUCCESS' && response.data) {
       console.log('Loaded tasks from backend:', response.data)
@@ -357,23 +309,12 @@ const saveCurrentPage = async () => {
   if (!currentPage.value) return
 
   try {
-    const response = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(
-        {
-          type: 'SAVE_CURRENT_TAB',
-          data: {
-            tasks: selectedTasks.value.length > 0 ? selectedTasks.value : undefined
-          }
-        },
-        (response: any) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message))
-            return
-          }
-          resolve(response)
-        }
-      )
-    }) as any
+    const response = await store.sendMessage({
+      type: 'SAVE_CURRENT_TAB',
+      data: {
+        tasks: selectedTasks.value.length > 0 ? selectedTasks.value : undefined
+      }
+    })
 
     if (response && response.type === 'SUCCESS') {
       showSaveForm.value = false

@@ -42,7 +42,7 @@ class SearchService implements ISearchService {
       score: 1,
       tags: page.tags,
       shortcut: page.shortcut,
-      task: page.task
+      tasks: page.tasks
     }))
   }
 
@@ -55,7 +55,7 @@ class SearchService implements ISearchService {
       snippet: note.comment || '',
       score: 1,
       tags: note.tags,
-      task: note.task
+      tasks: note.tasks
     }))
   }
 
@@ -72,7 +72,7 @@ class SearchService implements ISearchService {
       snippet: task.description || '',
       score: 1,
       tags: [],
-      task: task.name
+      tasks: []
     }))
   }
 
@@ -103,7 +103,7 @@ class SearchService implements ISearchService {
         score: 1,
         tags: page.tags,
         shortcut: page.shortcut,
-        task: page.task
+        tasks: page.tasks
       })),
       ...notes.map(note => ({
         type: 'note',
@@ -112,7 +112,7 @@ class SearchService implements ISearchService {
         snippet: note.comment || '',
         score: 1,
         tags: note.tags,
-        task: note.task
+        tasks: note.tasks
       }))
     ]
   }
@@ -132,7 +132,7 @@ class SearchService implements ISearchService {
         score: 1,
         tags: page.tags,
         shortcut: page.shortcut,
-        task: page.task
+        tasks: page.tasks
       })),
       ...notes.map(note => ({
         type: 'note',
@@ -141,7 +141,7 @@ class SearchService implements ISearchService {
         snippet: note.comment || '',
         score: 1,
         tags: note.tags,
-        task: note.task
+        tasks: note.tasks
       }))
     ]
   }

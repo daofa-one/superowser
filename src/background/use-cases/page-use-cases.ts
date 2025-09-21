@@ -85,11 +85,13 @@ export class PageUseCases {
       throw new Error(`Page ${pageId} not found`)
     }
 
-    // Remove from old task if any
-    if (page.task) {
-      const oldTask = await this.taskService.getByName(page.task)
-      if (oldTask) {
-        await this.taskService.removePage(oldTask.id, pageId)
+    // Remove from all old tasks
+    if (page.tasks && page.tasks.length > 0) {
+      for (const taskName of page.tasks) {
+        const oldTask = await this.taskService.getByName(taskName)
+        if (oldTask) {
+          await this.taskService.removePage(oldTask.id, pageId)
+        }
       }
     }
 
@@ -100,7 +102,7 @@ export class PageUseCases {
     }
     await this.taskService.addPage(newTask.id, pageId)
 
-    return this.pageService.update(pageId, { task: newTaskName })
+    return this.pageService.update(pageId, { tasks: [newTaskName] })
   }
 
   async searchPages(query: string, limit = 20): Promise<SearchResult[]> {
@@ -117,11 +119,13 @@ export class PageUseCases {
       throw new Error(`Page ${pageId} not found`)
     }
 
-    // Remove from task if any
-    if (page.task) {
-      const task = await this.taskService.getByName(page.task)
-      if (task) {
-        await this.taskService.removePage(task.id, pageId)
+    // Remove from all tasks
+    if (page.tasks && page.tasks.length > 0) {
+      for (const taskName of page.tasks) {
+        const task = await this.taskService.getByName(taskName)
+        if (task) {
+          await this.taskService.removePage(task.id, pageId)
+        }
       }
     }
 

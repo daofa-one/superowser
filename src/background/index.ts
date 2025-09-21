@@ -15,6 +15,13 @@ const pinia = createPinia()
 setActivePinia(pinia)
 const backgroundStore = useBackgroundStore()
 
+// Initialize the background store with persisted data
+backgroundStore.initialize(container).then(() => {
+    console.log('[superowser] Background store initialized');
+}).catch(error => {
+    console.error('[superowser] Failed to initialize background store:', error);
+});
+
 chrome.runtime.onInstalled.addListener(() => {
     console.log('[superowser] installed');
 });
@@ -332,7 +339,7 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 break;
 
             case 'GET_RECENT_PAGES':
-                data = backgroundStore.user.workingSet;
+                data = await container.pageUseCases.getRecentPages(20);
                 break;
 
             case 'MOVE_PAGE_TO_TASK':
