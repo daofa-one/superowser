@@ -18,22 +18,34 @@ export class TaskUseCases {
     private noteService: INoteService
   ) {}
 
+  private normalizeName(name: string, context: string): string {
+    const trimmed = (name ?? '').trim()
+    if (!trimmed) {
+      throw new Error(`Task name is required${context ? ` (${context})` : ''}`)
+    }
+    return trimmed
+  }
+
   async createTask(name: string, description?: string): Promise<TaskEntry> {
+    const normalizedName = this.normalizeName(name, 'create task')
+
     // Check if task name already exists
-    const existing = await this.taskService.getByName(name)
+    const existing = await this.taskService.getByName(normalizedName)
     if (existing) {
-      throw new Error(`Task "${name}" already exists`)
+      throw new Error(`Task "${normalizedName}" already exists`)
     }
 
-    return this.taskService.create(name, description)
+    return this.taskService.create(normalizedName, description)
   }
 
   async setActiveTask(taskName: string): Promise<TaskEntry> {
-    let task = await this.taskService.getByName(taskName)
+    const normalizedName = this.normalizeName(taskName, 'set active task')
+
+    let task = await this.taskService.getByName(normalizedName)
 
     if (!task) {
       // Create task if it doesn't exist
-      task = await this.taskService.create(taskName)
+      task = await this.taskService.create(normalizedName)
     }
 
     return this.taskService.setActive(task.id)
@@ -48,15 +60,16 @@ export class TaskUseCases {
     pages: PageEntry[]
     notes: NoteEntry[]
   }> {
-    const task = await this.taskService.getByName(taskName)
+    const normalizedName = this.normalizeName(taskName, 'load task content')
+    const task = await this.taskService.getByName(normalizedName)
 
     if (!task) {
       return { task: null, pages: [], notes: [] }
     }
 
     const [pages, notes] = await Promise.all([
-      this.pageService.getByTask(taskName),
-      this.noteService.getByTask(taskName)
+      this.pageService.getByTask(normalizedName),
+      this.noteService.getByTask(normalizedName)
     ])
 
     return { task, pages, notes }
@@ -77,12 +90,13 @@ export class TaskUseCases {
         url: pageInfo.url,
         title: pageInfo.title,
         favicon: pageInfo.favicon,
-        task: activeTask.name
+        tasks: [activeTask.name]
       })
     } else {
-      // Update existing page to be in this task
+      // Add task to existing page's tasks array
+      const newTasks = [...new Set([...(page.tasks || []), activeTask.name])]
       page = await this.pageService.update(page.id, {
-        task: activeTask.name
+        tasks: newTasks
       })
     }
 
@@ -90,9 +104,10 @@ export class TaskUseCases {
   }
 
   async removePageFromTask(taskName: string, pageId: string): Promise<void> {
-    const task = await this.taskService.getByName(taskName)
+    const normalizedName = this.normalizeName(taskName, 'remove page from task')
+    const task = await this.taskService.getByName(normalizedName)
     if (!task) {
-      throw new Error(`Task "${taskName}" not found`)
+      throw new Error(`Task "${normalizedName}" not found`)
     }
 
     await this.taskService.removePage(task.id, pageId)
@@ -102,33 +117,35 @@ export class TaskUseCases {
   }
 
   async renameTask(oldName: string, newName: string): Promise<TaskEntry> {
-    const task = await this.taskService.getByName(oldName)
+    const normalizedOldName = this.normalizeName(oldName, 'rename task (current name)')
+    const normalizedNewName = this.normalizeName(newName, 'rename task (new name)')
+    const task = await this.taskService.getByName(normalizedOldName)
     if (!task) {
-      throw new Error(`Task "${oldName}" not found`)
+      throw new Error(`Task "${normalizedOldName}" not found`)
     }
 
     // Check if new name already exists
-    const existing = await this.taskService.getByName(newName)
+    const existing = await this.taskService.getByName(normalizedNewName)
     if (existing && existing.id !== task.id) {
-      throw new Error(`Task "${newName}" already exists`)
+      throw new Error(`Task "${normalizedNewName}" already exists`)
     }
 
     // Update task name
-    const updatedTask = await this.taskService.update(task.id, { name: newName })
+    const updatedTask = await this.taskService.update(task.id, { name: normalizedNewName })
 
     // Update all pages in this task
-    const pages = await this.pageService.getByTask(oldName)
+    const pages = await this.pageService.getByTask(normalizedOldName)
     await Promise.all(
       pages.map(page =>
-        this.pageService.update(page.id, { task: newName })
+        this.pageService.update(page.id, { task: normalizedNewName })
       )
     )
 
     // Update all notes in this task
-    const notes = await this.noteService.getByTask(oldName)
+    const notes = await this.noteService.getByTask(normalizedOldName)
     await Promise.all(
       notes.map(note =>
-        this.noteService.update(note.id, { task: newName })
+        this.noteService.update(note.id, { task: normalizedNewName })
       )
     )
 
@@ -136,31 +153,34 @@ export class TaskUseCases {
   }
 
   async mergeTasks(sourceTaskName: string, targetTaskName: string): Promise<TaskEntry> {
+    const normalizedSource = this.normalizeName(sourceTaskName, 'merge tasks (source)')
+    const normalizedTarget = this.normalizeName(targetTaskName, 'merge tasks (target)')
+
     const [sourceTask, targetTask] = await Promise.all([
-      this.taskService.getByName(sourceTaskName),
-      this.taskService.getByName(targetTaskName)
+      this.taskService.getByName(normalizedSource),
+      this.taskService.getByName(normalizedTarget)
     ])
 
     if (!sourceTask) {
-      throw new Error(`Source task "${sourceTaskName}" not found`)
+      throw new Error(`Source task "${normalizedSource}" not found`)
     }
     if (!targetTask) {
-      throw new Error(`Target task "${targetTaskName}" not found`)
+      throw new Error(`Target task "${normalizedTarget}" not found`)
     }
 
     // Update all pages from source to target
-    const sourcePages = await this.pageService.getByTask(sourceTaskName)
+    const sourcePages = await this.pageService.getByTask(normalizedSource)
     await Promise.all(
       sourcePages.map(page =>
-        this.pageService.update(page.id, { task: targetTaskName })
+        this.pageService.update(page.id, { task: normalizedTarget })
       )
     )
 
     // Update all notes from source to target
-    const sourceNotes = await this.noteService.getByTask(sourceTaskName)
+    const sourceNotes = await this.noteService.getByTask(normalizedSource)
     await Promise.all(
       sourceNotes.map(note =>
-        this.noteService.update(note.id, { task: targetTaskName })
+        this.noteService.update(note.id, { task: normalizedTarget })
       )
     )
 
@@ -169,13 +189,14 @@ export class TaskUseCases {
   }
 
   async deleteTaskAndCleanup(taskName: string): Promise<void> {
-    const task = await this.taskService.getByName(taskName)
+    const normalizedName = this.normalizeName(taskName, 'delete task')
+    const task = await this.taskService.getByName(normalizedName)
     if (!task) {
-      throw new Error(`Task "${taskName}" not found`)
+      throw new Error(`Task "${normalizedName}" not found`)
     }
 
     // Remove task association from all pages
-    const pages = await this.pageService.getByTask(taskName)
+    const pages = await this.pageService.getByTask(normalizedName)
     await Promise.all(
       pages.map(page =>
         this.pageService.update(page.id, { task: undefined })
@@ -183,7 +204,7 @@ export class TaskUseCases {
     )
 
     // Remove task association from all notes
-    const notes = await this.noteService.getByTask(taskName)
+    const notes = await this.noteService.getByTask(normalizedName)
     await Promise.all(
       notes.map(note =>
         this.noteService.update(note.id, { task: undefined })

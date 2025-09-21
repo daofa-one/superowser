@@ -66,9 +66,27 @@ db.version(2).stores({
 const generateId = () => crypto.randomUUID()
 const now = () => new Date()
 
+const normalizeKey = (value?: string | null): string | null => {
+  const trimmed = (value ?? '').trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+const normalizeKeyArray = (values?: string[] | null): string[] => {
+  if (!values || values.length === 0) {
+    return []
+  }
+
+  const normalized = values
+    .map(value => normalizeKey(value))
+    .filter((value): value is string => !!value)
+
+  return Array.from(new Set(normalized))
+}
+
 export class DexiePageService implements IPageService {
   async save(request: SavePageRequest): Promise<PageEntry> {
     const existing = await this.getByUrl(request.url)
+    const normalizedTasks = normalizeKeyArray(request.tasks)
 
     if (existing) {
       // Update existing page
@@ -77,7 +95,7 @@ export class DexiePageService implements IPageService {
         favicon: request.favicon,
         tags: request.tags || existing.tags,
         shortcut: request.shortcut || existing.shortcut,
-        tasks: request.tasks || existing.tasks,
+        tasks: normalizedTasks.length > 0 ? normalizedTasks : existing.tasks,
         updatedAt: now()
       }
       return this.update(existing.id, updates)
@@ -90,7 +108,7 @@ export class DexiePageService implements IPageService {
         favicon: request.favicon,
         tags: request.tags || [],
         shortcut: request.shortcut,
-        tasks: request.tasks || [],
+        tasks: normalizedTasks,
         createdAt: now(),
         updatedAt: now()
       }
@@ -113,7 +131,11 @@ export class DexiePageService implements IPageService {
   }
 
   async getByTask(task: string): Promise<PageEntry[]> {
-    return await db.pages.where('tasks').equals(task).toArray()
+    const normalized = normalizeKey(task)
+    if (!normalized) {
+      return []
+    }
+    return await db.pages.where('tasks').equals(normalized).toArray()
   }
 
   async getByTags(tags: string[]): Promise<PageEntry[]> {
@@ -121,7 +143,16 @@ export class DexiePageService implements IPageService {
   }
 
   async update(id: string, updates: Partial<PageEntry>): Promise<PageEntry> {
-    await db.pages.update(id, { ...updates, updatedAt: now() })
+    const payload: Partial<PageEntry> = {
+      ...updates,
+      updatedAt: now()
+    }
+
+    if (updates?.tasks) {
+      payload.tasks = normalizeKeyArray(updates.tasks)
+    }
+
+    await db.pages.update(id, payload)
     const updated = await this.getById(id)
     if (!updated) throw new Error(`Page ${id} not found`)
     return updated
@@ -157,13 +188,15 @@ export class DexiePageService implements IPageService {
 
 export class DexieNoteService implements INoteService {
   async save(request: SaveNoteRequest): Promise<NoteEntry> {
+    const normalizedTasks = normalizeKeyArray(request.tasks)
+
     const note: NoteEntry = {
       id: generateId(),
       pageId: request.pageId,
       content: request.content,
       comment: request.comment,
       tags: request.tags || [],
-      tasks: request.tasks || [],
+      tasks: normalizedTasks,
       position: request.position,
       createdAt: now(),
       updatedAt: now()
@@ -182,7 +215,11 @@ export class DexieNoteService implements INoteService {
   }
 
   async getByTask(task: string): Promise<NoteEntry[]> {
-    return await db.notes.where('tasks').equals(task).toArray()
+    const normalized = normalizeKey(task)
+    if (!normalized) {
+      return []
+    }
+    return await db.notes.where('tasks').equals(normalized).toArray()
   }
 
   async getByTags(tags: string[]): Promise<NoteEntry[]> {
@@ -190,7 +227,16 @@ export class DexieNoteService implements INoteService {
   }
 
   async update(id: string, updates: Partial<NoteEntry>): Promise<NoteEntry> {
-    await db.notes.update(id, { ...updates, updatedAt: now() })
+    const payload: Partial<NoteEntry> = {
+      ...updates,
+      updatedAt: now()
+    }
+
+    if (updates?.tasks) {
+      payload.tasks = normalizeKeyArray(updates.tasks)
+    }
+
+    await db.notes.update(id, payload)
     const updated = await this.getById(id)
     if (!updated) throw new Error(`Note ${id} not found`)
     return updated
@@ -216,9 +262,14 @@ export class DexieNoteService implements INoteService {
 
 export class DexieTaskService implements ITaskService {
   async create(name: string, description?: string): Promise<TaskEntry> {
+    const normalizedName = normalizeKey(name)
+    if (!normalizedName) {
+      throw new Error('Task name cannot be empty')
+    }
+
     const task: TaskEntry = {
       id: generateId(),
-      name,
+      name: normalizedName,
       description,
       pageIds: [],
       noteIds: [],
@@ -236,11 +287,40 @@ export class DexieTaskService implements ITaskService {
   }
 
   async getByName(name: string): Promise<TaskEntry | null> {
-    return await db.tasks.where('name').equals(name).first() || null
+    const normalized = normalizeKey(name)
+    if (!normalized) {
+      return null
+    }
+    const task = await db.tasks.where('name').equals(normalized).first()
+    if (!task) {
+      return null
+    }
+    if (task.name !== normalized) {
+      task.name = normalized
+      await db.tasks.update(task.id, { name: normalized, updatedAt: now() })
+    }
+    return task
   }
 
   async getActive(): Promise<TaskEntry | null> {
-    return await db.tasks.where('isActive').equals(true).first() || null
+    const active = await db.tasks.where('isActive').equals(true).first()
+    if (!active) {
+      return null
+    }
+
+    const normalizedName = normalizeKey(active.name)
+    if (!normalizedName) {
+      // Clear invalid active state
+      await db.tasks.update(active.id, { isActive: false, updatedAt: now() })
+      return null
+    }
+
+    if (active.name !== normalizedName) {
+      await db.tasks.update(active.id, { name: normalizedName, updatedAt: now() })
+      active.name = normalizedName
+    }
+
+    return active
   }
 
   async setActive(id: string): Promise<TaskEntry> {
@@ -301,7 +381,22 @@ export class DexieTaskService implements ITaskService {
   }
 
   async getAll(): Promise<TaskEntry[]> {
-    return await db.tasks.orderBy('updatedAt').reverse().toArray()
+    const tasks = await db.tasks.orderBy('updatedAt').reverse().toArray()
+    const sanitized: TaskEntry[] = []
+
+    for (const task of tasks) {
+      const normalized = normalizeKey(task.name)
+      if (!normalized) {
+        continue
+      }
+      if (task.name !== normalized) {
+        await db.tasks.update(task.id, { name: normalized, updatedAt: now() })
+        task.name = normalized
+      }
+      sanitized.push(task)
+    }
+
+    return sanitized
   }
 
   async merge(sourceId: string, targetId: string): Promise<TaskEntry> {

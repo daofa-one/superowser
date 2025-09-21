@@ -7,8 +7,13 @@ import {
   TabInfo,
   isRequestMessage
 } from './messaging/message-types'
-// Initialize dependency injection container
+import { useBackgroundStore } from './stores/background-store'
+import { createPinia, setActivePinia } from 'pinia'
+// Initialize dependency injection container and shared store
 const container = DIContainer.getInstance()
+const pinia = createPinia()
+setActivePinia(pinia)
+const backgroundStore = useBackgroundStore()
 
 chrome.runtime.onInstalled.addListener(() => {
     console.log('[superowser] installed');
@@ -324,6 +329,10 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
 
             case 'GET_TASK_CONTENT':
                 data = await container.taskUseCases.getTaskWithContent(message.data.taskName);
+                break;
+
+            case 'GET_RECENT_PAGES':
+                data = backgroundStore.user.workingSet;
                 break;
 
             case 'MOVE_PAGE_TO_TASK':
