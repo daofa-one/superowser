@@ -88,6 +88,16 @@ const loadCurrentPageInfo = async () => {
         shortcut: savedPage?.shortcut || undefined
       }
       isPageSaved.value = !!savedPage
+
+      // Update selected tasks if save form is open
+      if (showSaveForm.value) {
+        selectedTasks.value = [...(savedPage?.tasks || [])]
+        // Add current task if available and not already selected
+        if (store.cache.currentTask?.name && !selectedTasks.value.includes(store.cache.currentTask.name)) {
+          selectedTasks.value.push(store.cache.currentTask.name)
+        }
+        filterTasks()
+      }
     } else {
       console.log('No tab data received')
       currentPage.value = null
@@ -274,8 +284,10 @@ const loadAvailableTasks = async () => {
     }) as any
 
     if (response && response.type === 'SUCCESS' && response.data) {
+      console.log('Loaded tasks from backend:', response.data)
       availableTasks.value = response.data.map((task: any) => task.name)
       filteredTasks.value = [...availableTasks.value]
+      console.log('Available task names:', availableTasks.value)
     }
   } catch (error) {
     console.error('Failed to load tasks:', error)

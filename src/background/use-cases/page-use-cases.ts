@@ -29,13 +29,15 @@ export class PageUseCases {
 
     const page = await this.pageService.save(request)
 
-    // If task is specified, add page to task
-    if (request.task) {
-      let task = await this.taskService.getByName(request.task)
-      if (!task) {
-        task = await this.taskService.create(request.task)
+    // If tasks are specified, add page to each task
+    if (request.tasks && request.tasks.length > 0) {
+      for (const taskName of request.tasks) {
+        let task = await this.taskService.getByName(taskName)
+        if (!task) {
+          task = await this.taskService.create(taskName)
+        }
+        await this.taskService.addPage(task.id, page.id)
       }
-      await this.taskService.addPage(task.id, page.id)
     }
 
     return page
@@ -49,7 +51,7 @@ export class PageUseCases {
       url: tabInfo.url,
       title: tabInfo.title,
       favicon: tabInfo.favicon,
-      task: activeTask?.name
+      tasks: activeTask ? [activeTask.name] : []
     }
 
     return this.savePage(request)
