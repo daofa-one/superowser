@@ -36,6 +36,60 @@ const sendRuntimeMessageSafe = (payload: any) => {
     }
 }
 
+const normalizeUrl = (value: string) => {
+  try {
+        const url = new URL(value)
+        const normalizePath = (path: string) => path.replace(/\/+$/, '') || '/'
+
+        return {
+            origin: url.origin.toLowerCase(),
+            path: normalizePath(url.pathname),
+            search: url.search || '',
+            hash: url.hash || ''
+        }
+    } catch {
+        return null
+    }
+}
+
+const urlsMatch = (first: string, second: string): boolean => {
+    const a = normalizeUrl(first)
+    const b = normalizeUrl(second)
+
+    if (!a || !b) {
+        return first === second
+    }
+
+    return (
+        a.origin === b.origin &&
+        a.path === b.path &&
+        a.search === b.search &&
+        a.hash === b.hash
+    )
+}
+
+const focusOrOpenUrl = async (targetUrl: string) => {
+    const allTabs = await chrome.tabs.query({});
+    const existingTab = allTabs.find(tab => {
+        const candidateUrl = tab.url || (tab as any).pendingUrl;
+        if (!candidateUrl) {
+            return false;
+        }
+        return urlsMatch(candidateUrl, targetUrl);
+    });
+
+    if (existingTab) {
+        await chrome.windows.update(existingTab.windowId, { focused: true });
+        await chrome.tabs.update(existingTab.id!, { active: true });
+        return existingTab;
+    }
+
+    return chrome.tabs.create({
+        url: targetUrl,
+        active: true
+    });
+}
+
 // Initialize the background store with persisted data
 backgroundStore.initialize(container).then(() => {
     console.log('[superowser] Background store initialized');
@@ -210,11 +264,7 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
         const result = await container.searchUseCases.executeOmniboxCommand(text);
 
         if (result.type === 'open' && result.page) {
-            // Open the page in a new tab
-            await chrome.tabs.create({
-                url: result.page.url,
-                active: true
-            });
+            await focusOrOpenUrl(result.page.url);
         } else if (result.type === 'task-activate') {
             const results = result.results ?? [];
             const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -240,10 +290,7 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                         // Get the full page data
                         const page = await container.pageService.getById(pageResult.id);
                         if (page) {
-                            await chrome.tabs.create({
-                                url: page.url,
-                                active: true
-                            });
+                            await focusOrOpenUrl(page.url);
                         }
                     }
                 } else {
