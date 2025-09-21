@@ -35,9 +35,14 @@ const hasNotes = computed(() => {
   return currentPage.value?.noteCount > 0
 })
 
+const showInitialLoader = computed(() => isLoading.value && !currentPage.value)
+const isRefreshing = computed(() => isLoading.value && !!currentPage.value)
+
 
 // Methods
 const loadCurrentPageInfo = async () => {
+  const hadPage = !!currentPage.value
+
   try {
     isLoading.value = true
     console.log('Loading current page info...')
@@ -46,6 +51,17 @@ const loadCurrentPageInfo = async () => {
     const response = await store.sendMessage({ type: 'GET_CURRENT_TAB_INFO' })
 
     console.log('Background response:', response)
+
+    if (!response || response.type !== 'SUCCESS' || !response.data) {
+      if (response?.type === 'ERROR') {
+        console.debug('Background not ready, keeping existing page state')
+      }
+      if (!hadPage) {
+        currentPage.value = null
+        isPageSaved.value = false
+      }
+      return
+    }
 
     if (response && response.type === 'SUCCESS' && response.data) {
       const tabData = response.data
@@ -56,6 +72,10 @@ const loadCurrentPageInfo = async () => {
         type: 'GET_PAGE_BY_URL',
         data: { url: tabData.url }
       })
+
+      if (savedPageResponse?.type === 'ERROR') {
+        console.debug('Page lookup not ready, keeping existing task metadata')
+      }
 
       let savedPage = null
       if (savedPageResponse && savedPageResponse.type === 'SUCCESS' && savedPageResponse.data) {
@@ -83,13 +103,13 @@ const loadCurrentPageInfo = async () => {
         }
         filterTasks()
       }
-    } else {
-      console.log('No tab data received')
-      currentPage.value = null
     }
   } catch (error) {
     console.error('Failed to load current page info:', error)
-    currentPage.value = null
+    if (!hadPage) {
+      currentPage.value = null
+      isPageSaved.value = false
+    }
   } finally {
     isLoading.value = false
   }
@@ -388,13 +408,17 @@ onUnmounted(() => {
 <template>
   <section class="current-page-info">
     <!-- Loading State -->
-    <div v-if="isLoading" class="loading-state">
+    <div v-if="showInitialLoader" class="loading-state">
       <div class="loading-spinner"></div>
       <span>Loading page info...</span>
     </div>
 
     <!-- Content -->
-    <div v-else-if="currentPage" class="page-content">
+    <div
+      v-else-if="currentPage"
+      class="page-content"
+      :class="{ refreshing: isRefreshing }"
+    >
       <!-- Top Section: Icon + URL -->
       <div class="top-section">
         <div class="page-icon">
@@ -653,6 +677,14 @@ onUnmounted(() => {
   padding: 16px;
   background: white;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.page-content {
+  transition: opacity 0.2s ease;
+}
+
+.page-content.refreshing {
+  opacity: 0.85;
 }
 
 /* Loading State */
