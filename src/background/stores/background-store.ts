@@ -1,7 +1,7 @@
 // Background store - Master state management using Strategy A
 
 import { defineStore } from 'pinia'
-import { PageEntry, TaskEntry, NoteEntry } from '../../shared/models'
+import { PageEntry, TaskEntry } from '../../shared/models'
 
 export interface BrowserSearchQuery {
   id: string

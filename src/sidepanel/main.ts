@@ -14,7 +14,7 @@ app.use(router);
 const store = useSidePanelStore();
 
 // Simple state sync setup
-chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender: unknown, _sendResponse: unknown) => {
   if (message?.type === 'STATE_UPDATE') {
     store.handleStateUpdate({ path: message.path, value: message.value })
   }

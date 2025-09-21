@@ -6,15 +6,12 @@ import {
   NoteEntry,
   TaskEntry,
   SavePageRequest,
-  SaveNoteRequest,
-  SearchResult
+  SaveNoteRequest
 } from '../../shared/models'
 import {
   IPageService,
   INoteService,
-  ITaskService,
-  ISearchService,
-  IStorageService
+  ITaskService
 } from '../../shared/services/interfaces'
 
 interface SuperowserDB extends Dexie {

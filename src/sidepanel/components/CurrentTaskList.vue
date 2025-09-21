@@ -14,7 +14,7 @@ interface TaskContentPayload {
 interface RuntimeMessage {
   type?: string
   path?: string
-  value?: any
+  value?: unknown
   timestamp?: string
 }
 

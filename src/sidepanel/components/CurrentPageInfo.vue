@@ -5,7 +5,15 @@ import { useSidePanelStore } from '../stores/sidepanel-store'
 const store = useSidePanelStore()
 
 // Current page data
-const currentPage = ref<any>(null)
+const currentPage = ref<{
+  url: string;
+  title: string;
+  favicon?: string;
+  tags: string[];
+  tasks: string[];
+  noteCount: number;
+  shortcut?: string;
+} | null>(null)
 const isLoading = ref(true)
 const isPageSaved = ref(false)
 const showShortcutForm = ref(false)
@@ -387,7 +395,7 @@ const cancelSave = () => {
 }
 
 // Listen for tab changes from background script
-const onTabChange = (message: any, _sender: any, _sendResponse: any) => {
+const onTabChange = (message: { type?: string; path?: string }, _sender: unknown, _sendResponse: unknown) => {
   if (message.type === 'TAB_CHANGED' || message.type === 'TAB_UPDATED') {
     console.log('Tab change detected, reloading page info...')
     loadCurrentPageInfo()

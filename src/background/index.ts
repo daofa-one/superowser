@@ -266,14 +266,11 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
         if (result.type === 'open' && result.page) {
             await focusOrOpenUrl(result.page.url);
         } else if (result.type === 'task-activate') {
-            const results = result.results ?? [];
             const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
             if (currentTab && currentTab.id) {
-                let panelOpened = false;
                 try {
                     await chrome.sidePanel.open({ tabId: currentTab.id });
-                    panelOpened = true;
                 } catch (openError) {
                     console.warn('Failed to auto-open side panel from omnibox task activation:', openError);
                 }
