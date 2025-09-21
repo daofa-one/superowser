@@ -30,8 +30,95 @@ class SearchService implements ISearchService {
   ) {}
 
   async search(query: any): Promise<any[]> {
-    // Implementation would go here
-    return []
+    if (!query || typeof query.query !== 'string' || !query.query.trim()) {
+      return []
+    }
+
+    const normalized = query.query.trim().toLowerCase()
+    const terms = normalized.split(/\s+/).filter(Boolean)
+
+    const [pageMatches, noteMatches, taskMatches] = await Promise.all([
+      this.pageService.search(normalized),
+      this.noteService.search(normalized),
+      this.taskService.getAll()
+    ])
+
+    const pageResults = pageMatches.map(page => {
+      const title = (page.title || '').toLowerCase()
+      const url = page.url.toLowerCase()
+      const shortcut = (page.shortcut || '').toLowerCase()
+      const tags = page.tags.map(tag => tag.toLowerCase())
+
+      let score = 1
+      if (shortcut && shortcut.includes(normalized)) score += 1.5
+      if (title.includes(normalized)) score += 1.2
+      if (url.includes(normalized)) score += 1
+      if (title.startsWith(normalized)) score += 1
+      if (url.startsWith(normalized)) score += 0.5
+      score += tags.filter(tag => tag.includes(normalized)).length * 0.2
+      score += terms.length * 0.1
+
+      return {
+        type: 'page' as const,
+        id: page.id,
+        title: page.title,
+        snippet: page.url,
+        score,
+        tags: page.tags,
+        shortcut: page.shortcut,
+        tasks: page.tasks
+      }
+    })
+
+    const noteResults = noteMatches.map(note => {
+      const content = note.content.toLowerCase()
+      const comment = (note.comment || '').toLowerCase()
+
+      let score = 1
+      if (content.includes(normalized)) score += 1
+      if (comment.includes(normalized)) score += 0.5
+      if (content.startsWith(normalized)) score += 0.5
+
+      return {
+        type: 'note' as const,
+        id: note.id,
+        title: note.content.slice(0, 50) + '...',
+        snippet: note.comment || '',
+        score,
+        tags: note.tags,
+        tasks: note.tasks
+      }
+    })
+
+    const taskResults = taskMatches
+      .map(task => {
+        const name = task.name.toLowerCase()
+        const description = (task.description || '').toLowerCase()
+        const nameMatch = name.includes(normalized)
+        const descriptionMatch = description.includes(normalized)
+
+        if (!nameMatch && !descriptionMatch) {
+          return null
+        }
+
+        let score = 1
+        if (name.startsWith(normalized)) score += 1.5
+        if (nameMatch) score += 1
+        if (descriptionMatch) score += 0.5
+
+        return {
+          type: 'task' as const,
+          id: task.id,
+          title: task.name,
+          snippet: task.description || '',
+          score,
+          tags: [],
+          tasks: []
+        }
+      })
+      .filter((match): match is { type: 'task'; id: string; title: string; snippet: string; score: number; tags: string[]; tasks: string[] } => match !== null)
+
+    return [...pageResults, ...noteResults, ...taskResults]
   }
 
   async searchPages(query: string, limit = 20): Promise<any[]> {

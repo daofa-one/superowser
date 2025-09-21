@@ -134,6 +134,22 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                     };
                 });
 
+                const pageSuggestions = suggestions.pages.map(({ page }) => {
+                    let hostname = '';
+                    try {
+                        hostname = new URL(page.url).hostname;
+                    } catch {
+                        hostname = page.url.split('/')[2] || page.url;
+                    }
+                    const safeTitle = escapeForXML(page.title ?? page.url);
+                    const safeUrl = escapeForXML(page.url);
+                    const safeHostname = hostname ? escapeForXML(hostname) : '';
+                    return {
+                        content: page.url,
+                        description: `${safeHostname ? `<dim>${safeHostname}</dim> - ` : ''}<match>${safeTitle}</match> | <dim>${safeUrl}</dim>`
+                    };
+                });
+
                 const tagSuggestions = suggestions.tags.map(({ tag, pages }) => {
                     const pageCount = pages.length;
                     const countText = pageCount === 1 ? '1 page' : `${pageCount} pages`;
@@ -151,20 +167,30 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                 }));
 
                 const interleaved: chrome.omnibox.SuggestResult[] = [];
+                const queues: chrome.omnibox.SuggestResult[][] = [
+                    shortcutSuggestions,
+                    pageSuggestions,
+                    tagSuggestions,
+                    taskSuggestions
+                ];
+
                 const pushNext = (queue: chrome.omnibox.SuggestResult[]) => {
                     if (queue.length && interleaved.length < 6) {
                         interleaved.push(queue.shift()!);
                     }
                 };
 
-                while (interleaved.length < 6 && (shortcutSuggestions.length || taskSuggestions.length || tagSuggestions.length)) {
-                    pushNext(shortcutSuggestions);
-                    pushNext(taskSuggestions);
-                    pushNext(tagSuggestions);
+                while (interleaved.length < 6 && queues.some(queue => queue.length)) {
+                    queues.forEach(pushNext);
                 }
 
                 // In case one category had more leftovers, fill the remaining slots respecting the limit.
-                const remaining = [...shortcutSuggestions, ...taskSuggestions, ...tagSuggestions];
+                const remaining = [
+                    ...shortcutSuggestions,
+                    ...pageSuggestions,
+                    ...tagSuggestions,
+                    ...taskSuggestions
+                ];
                 while (interleaved.length < 6 && remaining.length) {
                     interleaved.push(remaining.shift()!);
                 }
