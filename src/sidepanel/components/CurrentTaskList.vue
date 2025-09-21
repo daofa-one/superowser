@@ -418,29 +418,29 @@ onUnmounted(() => {
                 <div class="page-url" :title="page.url">
                   {{ displayUrl(page.url) }}
                 </div>
+
+                <div class="page-actions">
+                  <button
+                    class="btn btn-icon btn-remove"
+                    title="Remove from task (keep in storage)"
+                    @click.stop="removeFromTask(page)"
+                  >
+                    ➖
+                  </button>
+                  <button
+                    class="btn btn-icon btn-delete"
+                    title="Delete permanently"
+                    @click.stop="deletePageCompletely(page)"
+                  >
+                    🗑️
+                  </button>
+                </div>
               </div>
 
               <div v-if="page.tags && page.tags.length > 0" class="page-tags">
                 <span v-for="tag in page.tags" :key="tag" class="tag">
                   #{{ tag }}
                 </span>
-              </div>
-
-              <div class="page-actions">
-                <button
-                  class="btn btn-icon btn-remove"
-                  title="Remove from task (keep in storage)"
-                  @click.stop="removeFromTask(page)"
-                >
-                  ➖
-                </button>
-                <button
-                  class="btn btn-icon btn-delete"
-                  title="Delete permanently"
-                  @click.stop="deletePageCompletely(page)"
-                >
-                  🗑️
-                </button>
               </div>
             </li>
           </ul>
@@ -731,7 +731,7 @@ onUnmounted(() => {
 
 .page-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 8px 8px;
@@ -739,6 +739,7 @@ onUnmounted(() => {
   border-radius: 8px;
   background: white;
   transition: border-color 0.2s, box-shadow 0.2s;
+  position: relative;
 }
 
 .page-row:hover {
@@ -766,6 +767,8 @@ onUnmounted(() => {
 .page-main {
   min-width: 0;
   cursor: pointer;
+  position: relative;
+  padding-right: 60px; /* Space for overlaid actions */
 }
 
 .page-main:hover .page-title {
@@ -814,6 +817,14 @@ onUnmounted(() => {
   gap: 4px;
   opacity: 0;
   transition: opacity 0.2s ease;
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.95);
+  padding: 2px;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .page-row:hover .page-actions,
