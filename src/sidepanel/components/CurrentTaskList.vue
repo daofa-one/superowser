@@ -143,17 +143,65 @@ const openPage = (url: string) => {
   chrome.tabs.create({ url })
 }
 
-const copyUrl = async (url: string) => {
-  try {
-    await navigator.clipboard.writeText(url)
-    store.addNotification({
-      type: 'success',
-      message: 'URL copied to clipboard'
-    })
-  } catch (error) {
+const removeFromTask = async (page: PageEntry) => {
+  if (!currentTask.value) {
     store.addNotification({
       type: 'error',
-      message: 'Failed to copy URL'
+      message: 'No active task found'
+    })
+    return
+  }
+
+  try {
+    await store.sendMessage({
+      type: 'REMOVE_PAGE_FROM_TASK',
+      data: {
+        taskName: currentTask.value.name,
+        pageId: page.id
+      }
+    })
+
+    // Refresh the page list
+    await loadTaskPages(currentTask.value.name)
+
+    store.addNotification({
+      type: 'success',
+      message: `Removed "${page.title}" from task`
+    })
+  } catch (error) {
+    console.error('Failed to remove page from task:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to remove page from task'
+    })
+  }
+}
+
+const deletePageCompletely = async (page: PageEntry) => {
+  if (!confirm(`Delete "${page.title}" permanently? This cannot be undone.`)) {
+    return
+  }
+
+  try {
+    await store.sendMessage({
+      type: 'DELETE_PAGE',
+      data: { id: page.id }
+    })
+
+    // Refresh the page list if we still have an active task
+    if (currentTask.value) {
+      await loadTaskPages(currentTask.value.name)
+    }
+
+    store.addNotification({
+      type: 'success',
+      message: `Deleted "${page.title}" permanently`
+    })
+  } catch (error) {
+    console.error('Failed to delete page:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to delete page'
     })
   }
 }
@@ -199,41 +247,6 @@ const loadAvailableTasks = async () => {
 
 function normalizeTaskName(name: string | null | undefined): string {
   return (name ?? '').trim()
-}
-
-const setActiveTask = async (taskName: string): Promise<boolean> => {
-  const normalized = normalizeTaskName(taskName)
-
-  if (!normalized) {
-    store.addNotification({
-      type: 'error',
-      message: 'Cannot set an empty task name as active'
-    })
-    return false
-  }
-
-  try {
-    isSettingTask.value = true
-    const response = await store.sendMessage({
-      type: 'SET_ACTIVE_TASK',
-      data: { taskName: normalized }
-    }) as { type: string; data?: TaskEntry }
-
-    if (response?.type === 'SUCCESS') {
-      return true
-    }
-
-    throw new Error('Failed to set active task')
-  } catch (error) {
-    console.error('Failed to set active task:', error)
-    store.addNotification({
-      type: 'error',
-      message: 'Failed to set active task'
-    })
-    return false
-  } finally {
-    isSettingTask.value = false
-  }
 }
 
 const confirmActiveTask = async () => {
@@ -415,18 +428,18 @@ onUnmounted(() => {
 
               <div class="page-actions">
                 <button
-                  class="btn btn-icon"
-                  title="Open page"
-                  @click.stop="openPage(page.url)"
+                  class="btn btn-icon btn-remove"
+                  title="Remove from task (keep in storage)"
+                  @click.stop="removeFromTask(page)"
                 >
-                  🔗
+                  ➖
                 </button>
                 <button
-                  class="btn btn-icon"
-                  title="Copy URL"
-                  @click.stop="copyUrl(page.url)"
+                  class="btn btn-icon btn-delete"
+                  title="Delete permanently"
+                  @click.stop="deletePageCompletely(page)"
                 >
-                  📋
+                  🗑️
                 </button>
               </div>
             </li>
@@ -799,6 +812,13 @@ onUnmounted(() => {
 .page-actions {
   display: flex;
   gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.page-row:hover .page-actions,
+.page-row:focus-within .page-actions {
+  opacity: 1;
 }
 
 .btn {
@@ -1148,5 +1168,24 @@ onUnmounted(() => {
 
 .btn-primary:hover {
   background: #0056b3;
+}
+.btn-remove {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.btn-remove:hover {
+  background: #ffeaa7;
+  color: #7d5a00;
+}
+
+.btn-delete {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.btn-delete:hover {
+  background: #f5c6cb;
+  color: #5a1a1d;
 }
 </style>

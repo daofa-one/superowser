@@ -354,6 +354,17 @@ const onTabChange = (message: any, _sender: any, _sendResponse: any) => {
   if (message.type === 'TAB_CHANGED' || message.type === 'TAB_UPDATED') {
     console.log('Tab change detected, reloading page info...')
     loadCurrentPageInfo()
+  } else if (message.type === 'STATE_UPDATE' && message.path?.startsWith('page.')) {
+    // Check if this is a page update or deletion for the current page
+    const currentUrl = currentPage.value?.url
+    if (currentUrl && (message.path.includes('updated') || message.path.includes('deleted'))) {
+      // Check if it's a URL-based update that matches current page
+      const encodedCurrentUrl = encodeURIComponent(currentUrl)
+      if (message.path.includes(encodedCurrentUrl) || (message.path.startsWith('page.') && (message.path.endsWith('.updated') || message.path.endsWith('.deleted')))) {
+        console.log('Page update/deletion detected for current page, reloading page info...')
+        loadCurrentPageInfo()
+      }
+    }
   }
   return false // Indicate we don't need to send a response
 }

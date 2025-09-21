@@ -130,6 +130,17 @@ export class TaskUseCases {
     if (page) {
       const updatedTasks = page.tasks.filter(t => t !== normalizedName)
       await this.pageService.update(pageId, { tasks: updatedTasks })
+
+      // Broadcast page update for any UI components listening to this specific page
+      if (this.backgroundStore) {
+        try {
+          this.backgroundStore.broadcastStateUpdate(`page.${pageId}.updated`, Date.now())
+          // Also broadcast by URL for components that work with URLs
+          this.backgroundStore.broadcastStateUpdate(`page.url.${encodeURIComponent(page.url)}.updated`, Date.now())
+        } catch (error) {
+          console.warn('Could not broadcast page update:', error)
+        }
+      }
     }
   }
 

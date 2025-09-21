@@ -147,6 +147,11 @@ export interface GetRecentPagesMessage extends BaseMessage {
   type: 'GET_RECENT_PAGES'
 }
 
+export interface RemovePageFromTaskMessage extends BaseMessage {
+  type: 'REMOVE_PAGE_FROM_TASK'
+  data: { taskName: string; pageId: string }
+}
+
 // Union type for all request messages
 export type RequestMessage =
   | SavePageMessage
@@ -175,6 +180,7 @@ export type RequestMessage =
   | SaveShortcutMessage
   | SaveTagsMessage
   | GetRecentPagesMessage
+  | RemovePageFromTaskMessage
 
 // Response messages from background to side panel
 export interface SuccessResponse<T = any> extends BaseMessage {

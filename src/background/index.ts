@@ -429,6 +429,11 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 }
                 break;
 
+            case 'REMOVE_PAGE_FROM_TASK':
+                await container.taskUseCases.removePageFromTask(message.data.taskName, message.data.pageId);
+                data = { success: true };
+                break;
+
             default:
                 throw new Error(`Unknown message type: ${(message as any).type}`);
         }
