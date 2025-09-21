@@ -15,7 +15,8 @@ export class TaskUseCases {
   constructor(
     private taskService: ITaskService,
     private pageService: IPageService,
-    private noteService: INoteService
+    private noteService: INoteService,
+    private backgroundStore?: any
   ) {}
 
   private normalizeName(name: string, context: string): string {
@@ -51,14 +52,13 @@ export class TaskUseCases {
     const activeTask = await this.taskService.setActive(task.id)
 
     // Update background store with the new active task
-    // Note: This will be called from the background script, so we can access the store directly
-    try {
-      const { useBackgroundStore } = await import('../stores/background-store')
-      const backgroundStore = useBackgroundStore()
-      await backgroundStore.setCurrentTask(activeTask)
-    } catch (error) {
-      console.warn('Could not update background store:', error)
-      // This is not critical for functionality, so we continue
+    if (this.backgroundStore) {
+      try {
+        await this.backgroundStore.setCurrentTask(activeTask)
+      } catch (error) {
+        console.warn('Could not update background store:', error)
+        // This is not critical for functionality, so we continue
+      }
     }
 
     return activeTask

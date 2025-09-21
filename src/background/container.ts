@@ -199,6 +199,23 @@ export class DIContainer {
     return DIContainer.instance
   }
 
+  // Set the background store for use cases
+  public setBackgroundStore(backgroundStore: any): void {
+    this._pageUseCases = new PageUseCases(
+      this._pageService,
+      this._taskService,
+      this._searchService,
+      backgroundStore
+    )
+
+    this._taskUseCases = new TaskUseCases(
+      this._taskService,
+      this._pageService,
+      this._noteService,
+      backgroundStore
+    )
+  }
+
   // Getters for services
   get pageService(): IPageService {
     return this._pageService

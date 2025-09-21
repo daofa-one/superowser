@@ -15,7 +15,8 @@ export class PageUseCases {
   constructor(
     private pageService: IPageService,
     private taskService: ITaskService,
-    private searchService: ISearchService
+    private searchService: ISearchService,
+    private backgroundStore?: any
   ) {}
 
   async savePage(request: SavePageRequest): Promise<PageEntry> {
@@ -37,6 +38,18 @@ export class PageUseCases {
           task = await this.taskService.create(taskName)
         }
         await this.taskService.addPage(task.id, page.id)
+      }
+
+      // Broadcast task content updates
+      if (this.backgroundStore) {
+        try {
+          for (const taskName of request.tasks) {
+            // Signal that this task's content has changed
+            this.backgroundStore.broadcastStateUpdate(`task.${taskName}.contentChanged`, Date.now())
+          }
+        } catch (error) {
+          console.warn('Could not broadcast task content update:', error)
+        }
       }
     }
 

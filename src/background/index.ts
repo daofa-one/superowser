@@ -15,6 +15,9 @@ const pinia = createPinia()
 setActivePinia(pinia)
 const backgroundStore = useBackgroundStore()
 
+// Set the background store in the container for dependency injection
+container.setBackgroundStore(backgroundStore)
+
 // Initialize the background store with persisted data
 backgroundStore.initialize(container).then(() => {
     console.log('[superowser] Background store initialized');

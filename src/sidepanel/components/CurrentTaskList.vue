@@ -13,6 +13,9 @@ interface TaskContentPayload {
 
 interface RuntimeMessage {
   type?: string
+  path?: string
+  value?: any
+  timestamp?: string
 }
 
 // Component state
@@ -320,6 +323,13 @@ const onTaskChange = (message: RuntimeMessage) => {
   if (message?.type === 'TASK_CHANGED') {
     console.log('Task change detected, reloading task info...')
     loadCurrentTask()
+  } else if (message?.type === 'STATE_UPDATE' && message.path?.startsWith('task.')) {
+    // Check if this is a content change for the current task
+    const currentTaskName = currentTask.value?.name
+    if (currentTaskName && message.path.includes(currentTaskName) && message.path.includes('contentChanged')) {
+      console.log('Current task content changed, reloading pages...')
+      loadTaskPages(currentTaskName)
+    }
   }
   return false
 }
@@ -652,7 +662,7 @@ onUnmounted(() => {
 
 .task-name {
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: #333;
   line-height: 1.3;
@@ -741,10 +751,10 @@ onUnmounted(() => {
 }
 
 .page-title {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   color: #333;
-  line-height: 1.3;
+  line-height: 1.1;
   margin-bottom: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -752,9 +762,9 @@ onUnmounted(() => {
 }
 
 .page-url {
-  font-size: 12px;
+  font-size: 11px;
   color: #007bff;
-  line-height: 1.3;
+  line-height: 1.1;
   margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
