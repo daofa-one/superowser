@@ -460,14 +460,47 @@ export const useSidePanelStore = defineStore('sidepanel', {
 
     // Cache update methods (called by state sync)
     updateCache(path: string, value: any) {
-      const keys = path.split('.')
+      if (!path) {
+        return
+      }
+
+      const directMappings: Record<string, keyof CachedState> = {
+        'user.currentTask': 'currentTask',
+        'user.previousTask': 'previousTask',
+        'currentTask': 'currentTask',
+        'previousTask': 'previousTask'
+      }
+
+      const targetKey = directMappings[path]
+      if (targetKey) {
+        ;(this.cache as any)[targetKey] = value ?? null
+        return
+      }
+
+      const keys = path.split('.').filter(Boolean)
+      if (keys.length === 0) {
+        return
+      }
+
       let target = this.cache as any
 
       for (let i = 0; i < keys.length - 1; i++) {
-        target = target[keys[i]]
+        const key = keys[i]
+        if (typeof target[key] !== 'object' || target[key] === null) {
+          target[key] = {}
+        }
+        target = target[key]
       }
 
       target[keys[keys.length - 1]] = value
+    },
+
+    handleStateUpdate(message: { path?: string; value?: unknown }) {
+      if (!message?.path) {
+        return
+      }
+
+      this.updateCache(message.path, message.value ?? null)
     },
 
     // Utility method for sending messages to background

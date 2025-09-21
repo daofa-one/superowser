@@ -2,7 +2,8 @@
 
 import {
   SearchQuery,
-  SearchResult
+  SearchResult,
+  TaskEntry
 } from '../../shared/models'
 import {
   IPageService,
@@ -10,20 +11,24 @@ import {
   ITaskService,
   ISearchService
 } from '../../shared/services/interfaces'
+import { fuzzyMatchScore } from '../../shared/utils'
+import { TaskUseCases } from './task-use-cases'
 
 export class SearchUseCases {
   constructor(
     private pageService: IPageService,
     private noteService: INoteService,
     private taskService: ITaskService,
-    private searchService: ISearchService
+    private searchService: ISearchService,
+    private taskUseCases: TaskUseCases
   ) {}
 
   async executeOmniboxCommand(input: string): Promise<{
-    type: 'open' | 'search' | 'filter' | 'error'
+    type: 'open' | 'search' | 'filter' | 'error' | 'task-activate'
     results?: SearchResult[]
     page?: any
     message?: string
+    task?: TaskEntry
   }> {
     // Parse omnibox syntax
     const trimmed = input.trim()
@@ -58,10 +63,77 @@ export class SearchUseCases {
 
     // &task - show task group
     if (trimmed.startsWith('&')) {
-      const taskName = trimmed.slice(1)
+      const taskQuery = trimmed.slice(1).trim()
+      if (!taskQuery) {
+        return { type: 'error', message: 'Please provide a task name after &.' }
+      }
+
+      const allTasks = await this.taskService.getAll()
+      const exactMatch = allTasks.find(
+        task => task.name.toLowerCase() === taskQuery.toLowerCase()
+      )
+
+      let targetTask: TaskEntry | undefined = exactMatch
+
+      if (!targetTask) {
+        const bestMatch = allTasks
+          .map((task: TaskEntry) => {
+            const score = fuzzyMatchScore(task.name, taskQuery)
+            return score === null ? null : { task, score }
+          })
+          .filter((match): match is { task: TaskEntry; score: number } => match !== null)
+          .sort((a, b) => {
+            if (a.score === b.score) {
+              return a.task.name.localeCompare(b.task.name)
+            }
+            return b.score - a.score
+          })[0]
+
+        targetTask = bestMatch?.task
+      }
+
+      if (!targetTask) {
+        // Create a new active task if none matched
+        const createdTask = await this.taskUseCases.setActiveTask(taskQuery)
+        const [createdPages, createdNotes] = await Promise.all([
+          this.pageService.getByTask(createdTask.name),
+          this.noteService.getByTask(createdTask.name)
+        ])
+
+        const createdResults: SearchResult[] = [
+          ...createdPages.map(page => ({
+            type: 'page' as const,
+            id: page.id,
+            title: page.title,
+            snippet: page.url,
+            score: 1,
+            tags: page.tags,
+            shortcut: page.shortcut,
+            tasks: page.tasks
+          })),
+          ...createdNotes.map(note => ({
+            type: 'note' as const,
+            id: note.id,
+            title: note.content.slice(0, 50) + '...',
+            snippet: note.comment || '',
+            score: 1,
+            tags: note.tags,
+            tasks: note.tasks
+          }))
+        ]
+
+        return {
+          type: 'task-activate',
+          results: createdResults,
+          task: createdTask
+        }
+      }
+
+      const activeTask = await this.taskUseCases.setActiveTask(targetTask.name)
+
       const [pages, notes] = await Promise.all([
-        this.pageService.getByTask(taskName),
-        this.noteService.getByTask(taskName)
+        this.pageService.getByTask(activeTask.name),
+        this.noteService.getByTask(activeTask.name)
       ])
 
       const results: SearchResult[] = [
@@ -86,7 +158,7 @@ export class SearchUseCases {
         }))
       ]
 
-      return { type: 'filter', results }
+      return { type: 'task-activate', results, task: activeTask }
     }
 
     // !notes query - search within notes
@@ -206,18 +278,34 @@ export class SearchUseCases {
       })
       .slice(0, 10)
 
-    const taskNames = tasks
-      .filter(t => t.name.toLowerCase().includes(query))
-      .map(t => t.name)
-      .sort((a, b) => {
-        // Prioritize starts-with matches over contains matches
-        const aStarts = a.toLowerCase().startsWith(query);
-        const bStarts = b.toLowerCase().startsWith(query);
-        if (aStarts && !bStarts) return -1;
-        if (!aStarts && bStarts) return 1;
-        return a.localeCompare(b);
-      })
-      .slice(0, 10)
+    const normalizedQuery = query.trim()
+    let taskNames: string[] = []
+
+    if (!normalizedQuery) {
+      taskNames = tasks
+        .map(t => t.name)
+        .sort((a, b) => a.localeCompare(b))
+        .slice(0, 10)
+    } else {
+      taskNames = tasks
+        .map(task => {
+          const score = fuzzyMatchScore(task.name, normalizedQuery)
+          return score === null ? null : { name: task.name, score }
+        })
+        .filter((match): match is { name: string; score: number } => match !== null)
+        .sort((a, b) => {
+          if (a.score === b.score) {
+            const aStarts = a.name.toLowerCase().startsWith(normalizedQuery)
+            const bStarts = b.name.toLowerCase().startsWith(normalizedQuery)
+            if (aStarts && !bStarts) return -1
+            if (!aStarts && bStarts) return 1
+            return a.name.localeCompare(b.name)
+          }
+          return b.score - a.score
+        })
+        .slice(0, 10)
+        .map(match => match.name)
+    }
 
     return {
       shortcuts,

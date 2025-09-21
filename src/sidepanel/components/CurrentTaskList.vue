@@ -336,12 +336,17 @@ const onTaskChange = (message: RuntimeMessage) => {
   if (message?.type === 'TASK_CHANGED') {
     console.log('Task change detected, reloading task info...')
     loadCurrentTask()
-  } else if (message?.type === 'STATE_UPDATE' && message.path?.startsWith('task.')) {
-    // Check if this is a content change for the current task
-    const currentTaskName = currentTask.value?.name
-    if (currentTaskName && message.path.includes(currentTaskName) && message.path.includes('contentChanged')) {
-      console.log('Current task content changed, reloading pages...')
-      loadTaskPages(currentTaskName)
+  } else if (message?.type === 'STATE_UPDATE') {
+    if (message.path === 'user.currentTask' || message.path === 'currentTask') {
+      void applyCurrentTask(message.value ?? null)
+    } else if (message.path === 'user.previousTask' || message.path === 'previousTask') {
+      store.updateCache(message.path, message.value ?? null)
+    } else if (message.path?.startsWith('task.')) {
+      const currentTaskName = currentTask.value?.name
+      if (currentTaskName && message.path.includes(currentTaskName) && message.path.includes('contentChanged')) {
+        console.log('Current task content changed, reloading pages...')
+        loadTaskPages(currentTaskName)
+      }
     }
   }
   return false

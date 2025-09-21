@@ -9,6 +9,7 @@ import {
 } from './messaging/message-types'
 import { useBackgroundStore } from './stores/background-store'
 import { createPinia, setActivePinia } from 'pinia'
+import { escapeForXML } from '../shared/utils'
 // Initialize dependency injection container and shared store
 const container = DIContainer.getInstance()
 const pinia = createPinia()
@@ -17,6 +18,19 @@ const backgroundStore = useBackgroundStore()
 
 // Set the background store in the container for dependency injection
 container.setBackgroundStore(backgroundStore)
+
+const sendRuntimeMessageSafe = (payload: any) => {
+    try {
+        chrome.runtime.sendMessage(payload, () => {
+            const error = chrome.runtime.lastError
+            if (error && error.message && !error.message.includes('Receiving end does not exist')) {
+                console.warn('[superowser] Failed to deliver runtime message:', error.message)
+            }
+        })
+    } catch (error) {
+        console.warn('[superowser] Runtime message dispatch failed:', error)
+    }
+}
 
 // Initialize the background store with persisted data
 backgroundStore.initialize(container).then(() => {
@@ -49,9 +63,12 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                     } catch {
                         hostname = page.url.split('/')[2] || page.url;
                     }
+                    const safeShortcut = escapeForXML(shortcut);
+                    const safeTitle = escapeForXML(page.title ?? '');
+                    const safeHostname = hostname ? escapeForXML(hostname) : '';
                     return {
                         content: `@${shortcut}`,
-                        description: `<match>@${shortcut}</match> - ${page.title} | <dim>${hostname}</dim>`
+                        description: `<match>@${safeShortcut}</match> - ${safeTitle}${safeHostname ? ` | <dim>${safeHostname}</dim>` : ''}`
                     };
                 });
             } else if (trimmed.startsWith('#')) {
@@ -62,7 +79,6 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                     const pageCount = pages.length;
                     const examplePage = pages[0];
                     const countText = pageCount === 1 ? '1 page' : `${pageCount} pages`;
-                    const exampleTitle = examplePage ? ` | ${examplePage.title}` : '';
                     let exampleHostname = '';
                     if (examplePage) {
                         try {
@@ -71,9 +87,13 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                             exampleHostname = examplePage.url.split('/')[2] || examplePage.url;
                         }
                     }
+                    const safeTag = escapeForXML(tag);
+                    const safeCount = escapeForXML(countText);
+                    const safeHostname = exampleHostname ? escapeForXML(exampleHostname) : '';
+                    const descriptionExtras = safeHostname ? ` | ${safeHostname}` : '';
                     return {
                         content: `#${tag}`,
-                        description: `<match>#${tag}</match> - <dim>${countText}</dim>${exampleTitle ? ` | ${exampleHostname}` : ''}`
+                        description: `<match>#${safeTag}</match> - <dim>${safeCount}</dim>${descriptionExtras}`
                     };
                 });
             } else if (trimmed.startsWith('&')) {
@@ -82,7 +102,7 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                 const suggestions = await container.searchUseCases.getSearchSuggestions(query);
                 omniboxSuggestions = suggestions.tasks.map(task => ({
                     content: `&${task}`,
-                    description: `<match>&${task}</match> - <dim>Show task</dim>`
+                    description: `<match>&amp;${escapeForXML(task)}</match> - <dim>Show task</dim>`
                 }));
             } else if (trimmed.startsWith('!notes ')) {
                 // Note search suggestions - could add note-specific suggestions here
@@ -93,32 +113,59 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
             } else {
                 // General suggestions - show all types with rich info
                 const suggestions = await container.searchUseCases.getSearchSuggestions(trimmed);
-                omniboxSuggestions = [
-                    ...suggestions.shortcuts.map(({ shortcut, page }) => {
-                        let hostname = '';
-                        try {
-                            hostname = new URL(page.url).hostname;
-                        } catch {
-                            hostname = page.url.split('/')[2] || page.url;
-                        }
-                        return {
-                            content: `@${shortcut}`,
-                            description: `<match>@${shortcut}</match> - ${page.title} | <dim>${hostname}</dim>`
-                        };
-                    }),
-                    ...suggestions.tags.map(({ tag, pages }) => {
-                        const pageCount = pages.length;
-                        const countText = pageCount === 1 ? '1 page' : `${pageCount} pages`;
-                        return {
-                            content: `#${tag}`,
-                            description: `<match>#${tag}</match> - <dim>${countText}</dim>`
-                        };
-                    }),
-                    ...suggestions.tasks.map(task => ({
-                        content: `&${task}`,
-                        description: `<match>&${task}</match> - <dim>Show task</dim>`
-                    }))
-                ];
+
+                const shortcutSuggestions = suggestions.shortcuts.map(({ shortcut, page }) => {
+                    let hostname = '';
+                    try {
+                        hostname = new URL(page.url).hostname;
+                    } catch {
+                        hostname = page.url.split('/')[2] || page.url;
+                    }
+                    const safeShortcut = escapeForXML(shortcut);
+                    const safeTitle = escapeForXML(page.title ?? '');
+                    const safeHostname = hostname ? escapeForXML(hostname) : '';
+                    return {
+                        content: `@${shortcut}`,
+                        description: `<match>@${safeShortcut}</match> - ${safeTitle}${safeHostname ? ` | <dim>${safeHostname}</dim>` : ''}`
+                    };
+                });
+
+                const tagSuggestions = suggestions.tags.map(({ tag, pages }) => {
+                    const pageCount = pages.length;
+                    const countText = pageCount === 1 ? '1 page' : `${pageCount} pages`;
+                    const safeTag = escapeForXML(tag);
+                    const safeCount = escapeForXML(countText);
+                    return {
+                        content: `#${tag}`,
+                        description: `<match>#${safeTag}</match> - <dim>${safeCount}</dim>`
+                    };
+                });
+
+                const taskSuggestions = suggestions.tasks.map(task => ({
+                    content: `&${task}`,
+                    description: `<match>&amp;${escapeForXML(task)}</match> - <dim>Show task</dim>`
+                }));
+
+                const interleaved: chrome.omnibox.SuggestResult[] = [];
+                const pushNext = (queue: chrome.omnibox.SuggestResult[]) => {
+                    if (queue.length && interleaved.length < 6) {
+                        interleaved.push(queue.shift()!);
+                    }
+                };
+
+                while (interleaved.length < 6 && (shortcutSuggestions.length || taskSuggestions.length || tagSuggestions.length)) {
+                    pushNext(shortcutSuggestions);
+                    pushNext(taskSuggestions);
+                    pushNext(tagSuggestions);
+                }
+
+                // In case one category had more leftovers, fill the remaining slots respecting the limit.
+                const remaining = [...shortcutSuggestions, ...taskSuggestions, ...tagSuggestions];
+                while (interleaved.length < 6 && remaining.length) {
+                    interleaved.push(remaining.shift()!);
+                }
+
+                omniboxSuggestions = interleaved;
             }
 
             suggest(omniboxSuggestions.slice(0, 6)); // Limit to 6 suggestions
@@ -138,6 +185,37 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                 url: result.page.url,
                 active: true
             });
+        } else if (result.type === 'task-activate') {
+            const results = result.results ?? [];
+            const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+            if (currentTab && currentTab.id) {
+                let panelOpened = false;
+                try {
+                    await chrome.sidePanel.open({ tabId: currentTab.id });
+                    panelOpened = true;
+                } catch (openError) {
+                    console.warn('Failed to auto-open side panel from omnibox task activation:', openError);
+                }
+
+                const deliverResults = () => {
+                    sendRuntimeMessageSafe({
+                        type: 'OMNIBOX_RESULTS',
+                        data: {
+                            query: text,
+                            mode: 'task',
+                            task: result.task,
+                            results
+                        }
+                    });
+                };
+
+                if (panelOpened) {
+                    setTimeout(deliverResults, 500);
+                } else {
+                    deliverResults();
+                }
+            }
         } else if (result.type === 'filter' || result.type === 'search') {
             // Handle search/filter results
             if (result.results && result.results.length > 0) {
@@ -158,17 +236,29 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                     // Multiple results - open side panel to show them
                     const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
                     if (currentTab && currentTab.id) {
-                        await chrome.sidePanel.open({ tabId: currentTab.id });
-                        // Send search results to side panel
-                        setTimeout(() => {
-                            chrome.runtime.sendMessage({
+                        let panelOpened = false;
+                        try {
+                            await chrome.sidePanel.open({ tabId: currentTab.id });
+                            panelOpened = true;
+                        } catch (openError) {
+                            console.warn('Failed to auto-open side panel from omnibox input:', openError);
+                        }
+
+                        const deliverResults = () => {
+                            sendRuntimeMessageSafe({
                                 type: 'OMNIBOX_RESULTS',
                                 data: {
                                     query: text,
                                     results: result.results
                                 }
                             });
-                        }, 500); // Small delay to ensure side panel is ready
+                        };
+
+                        if (panelOpened) {
+                            setTimeout(deliverResults, 500);
+                        } else {
+                            deliverResults();
+                        }
                     }
                 }
             } else {

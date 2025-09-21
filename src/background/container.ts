@@ -18,6 +18,8 @@ import {
   ITaskService,
   ISearchService
 } from '../shared/services/interfaces'
+import { fuzzyMatchScore } from '../shared/utils'
+import { TaskEntry } from '../shared/models'
 
 // Simple search service implementation
 class SearchService implements ISearchService {
@@ -60,17 +62,53 @@ class SearchService implements ISearchService {
   }
 
   async searchTasks(query: string, limit = 20): Promise<any[]> {
+    const normalizedQuery = query.trim()
     const tasks = await this.taskService.getAll()
-    const filtered = tasks.filter(task =>
-      task.name.toLowerCase().includes(query.toLowerCase()) ||
-      (task.description && task.description.toLowerCase().includes(query.toLowerCase()))
-    )
-    return filtered.slice(0, limit).map(task => ({
+
+    if (!normalizedQuery) {
+      return tasks.slice(0, limit).map(task => ({
+        type: 'task',
+        id: task.id,
+        title: task.name,
+        snippet: task.description || '',
+        score: 0,
+        tags: [],
+        tasks: []
+      }))
+    }
+
+    const matches = tasks
+      .map((task: TaskEntry) => {
+        const nameScore = fuzzyMatchScore(task.name, normalizedQuery)
+        const descriptionScore = task.description
+          ? fuzzyMatchScore(task.description, normalizedQuery)
+          : null
+        const bestScore = Math.max(
+          nameScore ?? Number.NEGATIVE_INFINITY,
+          descriptionScore ?? Number.NEGATIVE_INFINITY
+        )
+
+        if (!Number.isFinite(bestScore) || bestScore === Number.NEGATIVE_INFINITY) {
+          return null
+        }
+
+        return { task, score: bestScore }
+      })
+      .filter((match): match is { task: TaskEntry; score: number } => match !== null)
+      .sort((a, b) => {
+        if (a.score === b.score) {
+          return a.task.name.localeCompare(b.task.name)
+        }
+        return b.score - a.score
+      })
+      .slice(0, limit)
+
+    return matches.map(match => ({
       type: 'task',
-      id: task.id,
-      title: task.name,
-      snippet: task.description || '',
-      score: 1,
+      id: match.task.id,
+      title: match.task.name,
+      snippet: match.task.description || '',
+      score: match.score,
       tags: [],
       tasks: []
     }))
@@ -188,7 +226,8 @@ export class DIContainer {
       this._pageService,
       this._noteService,
       this._taskService,
-      this._searchService
+      this._searchService,
+      this._taskUseCases
     )
   }
 
@@ -213,6 +252,14 @@ export class DIContainer {
       this._pageService,
       this._noteService,
       backgroundStore
+    )
+
+    this._searchUseCases = new SearchUseCases(
+      this._pageService,
+      this._noteService,
+      this._taskService,
+      this._searchService,
+      this._taskUseCases
     )
   }
 

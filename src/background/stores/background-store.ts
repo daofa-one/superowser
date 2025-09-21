@@ -419,6 +419,11 @@ export const useBackgroundStore = defineStore('background', {
           path,
           value,
           timestamp: new Date().toISOString()
+        }, () => {
+          const error = chrome.runtime.lastError
+          if (error && error.message && !error.message.includes('Receiving end does not exist')) {
+            console.warn('[Background Store] Failed to broadcast state update:', error.message)
+          }
         })
       } catch (error) {
         console.warn('Failed to broadcast state update:', error)

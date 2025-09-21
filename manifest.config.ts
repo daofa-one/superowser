@@ -18,7 +18,7 @@ export default defineManifest(async (env) => ({
   version_name: version,
   manifest_version: 3,
   "omnibox": {
-    "keyword": "`"
+    "keyword": '`'
   },
   icons: {
     '16': 'icons/icon16.png',
