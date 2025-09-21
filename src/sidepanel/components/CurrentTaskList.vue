@@ -692,10 +692,19 @@ onUnmounted(() => {
 .pages-list {
   max-height: 400px;
   overflow-y: auto;
+
+  /* Hide scrollbar for modern browsers */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+/* Hide scrollbar for Webkit browsers (Chrome, Safari) */
+.pages-list::-webkit-scrollbar {
+  display: none;
 }
 
 .pages {
-  padding: 12px;
+  padding: 6px;
 }
 
 .page-list {
@@ -712,7 +721,7 @@ onUnmounted(() => {
   grid-template-columns: 24px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px;
+  padding: 8px 8px;
   border: 1px solid #f0f0f0;
   border-radius: 8px;
   background: white;
@@ -962,6 +971,15 @@ onUnmounted(() => {
   max-height: 300px;
   overflow-y: auto;
   padding: 8px;
+
+  /* Hide scrollbar for modern browsers */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+/* Hide scrollbar for Webkit browsers (Chrome, Safari) */
+.task-list::-webkit-scrollbar {
+  display: none;
 }
 
 .task-option {
