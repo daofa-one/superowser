@@ -156,8 +156,8 @@ export class SearchUseCases {
   }
 
   async getSearchSuggestions(partialQuery: string): Promise<{
-    shortcuts: string[]
-    tags: string[]
+    shortcuts: Array<{ shortcut: string; page: any }>
+    tags: Array<{ tag: string; pages: any[] }>
     tasks: string[]
   }> {
     const query = partialQuery.toLowerCase()
@@ -170,17 +170,53 @@ export class SearchUseCases {
 
     const shortcuts = pages
       .filter(p => p.shortcut && p.shortcut.toLowerCase().includes(query))
-      .map(p => p.shortcut!)
+      .sort((a, b) => {
+        // Prioritize starts-with matches over contains matches
+        const aStarts = a.shortcut!.toLowerCase().startsWith(query);
+        const bStarts = b.shortcut!.toLowerCase().startsWith(query);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return a.shortcut!.localeCompare(b.shortcut!);
+      })
       .slice(0, 10)
+      .map(p => ({ shortcut: p.shortcut!, page: p }))
 
-    const allTags = pages.flatMap(p => p.tags)
-    const tags = [...new Set(allTags)]
-      .filter(tag => tag.toLowerCase().includes(query))
+    // Group pages by tags and get unique tags with their pages
+    const tagGroups = new Map<string, any[]>();
+    pages.forEach(page => {
+      page.tags.forEach((tag: string) => {
+        if (tag.toLowerCase().includes(query)) {
+          if (!tagGroups.has(tag)) {
+            tagGroups.set(tag, []);
+          }
+          tagGroups.get(tag)!.push(page);
+        }
+      });
+    });
+
+    const tags = Array.from(tagGroups.entries())
+      .map(([tag, pages]) => ({ tag, pages }))
+      .sort((a, b) => {
+        // Prioritize starts-with matches over contains matches
+        const aStarts = a.tag.toLowerCase().startsWith(query);
+        const bStarts = b.tag.toLowerCase().startsWith(query);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return a.tag.localeCompare(b.tag);
+      })
       .slice(0, 10)
 
     const taskNames = tasks
       .filter(t => t.name.toLowerCase().includes(query))
       .map(t => t.name)
+      .sort((a, b) => {
+        // Prioritize starts-with matches over contains matches
+        const aStarts = a.toLowerCase().startsWith(query);
+        const bStarts = b.toLowerCase().startsWith(query);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return a.localeCompare(b);
+      })
       .slice(0, 10)
 
     return {

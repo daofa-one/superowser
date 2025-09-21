@@ -47,6 +47,11 @@ export interface GetPageByShortcutMessage extends BaseMessage {
   data: { shortcut: string }
 }
 
+export interface GetPageByUrlMessage extends BaseMessage {
+  type: 'GET_PAGE_BY_URL'
+  data: { url: string }
+}
+
 export interface SearchMessage extends BaseMessage {
   type: 'SEARCH'
   data: SearchQuery
@@ -128,6 +133,16 @@ export interface ImportDataMessage extends BaseMessage {
   data: { jsonData: string }
 }
 
+export interface SaveShortcutMessage extends BaseMessage {
+  type: 'SAVE_SHORTCUT'
+  data: { url: string; shortcut: string }
+}
+
+export interface SaveTagsMessage extends BaseMessage {
+  type: 'SAVE_TAGS'
+  data: { url: string; tags: string[] }
+}
+
 // Union type for all request messages
 export type RequestMessage =
   | SavePageMessage
@@ -135,6 +150,7 @@ export type RequestMessage =
   | SaveNoteMessage
   | GetPageMessage
   | GetPageByShortcutMessage
+  | GetPageByUrlMessage
   | SearchMessage
   | OmniboxCommandMessage
   | GetTasksMessage
@@ -152,6 +168,8 @@ export type RequestMessage =
   | GetPopularTagsMessage
   | ExportDataMessage
   | ImportDataMessage
+  | SaveShortcutMessage
+  | SaveTagsMessage
 
 // Response messages from background to side panel
 export interface SuccessResponse<T = any> extends BaseMessage {

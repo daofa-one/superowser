@@ -7,7 +7,6 @@ import {
   TabInfo,
   isRequestMessage
 } from './messaging/message-types'
-
 // Initialize dependency injection container
 const container = DIContainer.getInstance()
 
@@ -15,13 +14,218 @@ chrome.runtime.onInstalled.addListener(() => {
     console.log('[superowser] installed');
 });
 
+
+// Omnibox event handlers
+chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
+    try {
+        if (text.trim()) {
+            const trimmed = text.trim();
+            let omniboxSuggestions: chrome.omnibox.SuggestResult[] = [];
+
+            // Context-aware suggestions based on what user is typing
+            if (trimmed.startsWith('@')) {
+                // Shortcut suggestions with page info
+                const query = trimmed.slice(1);
+                const suggestions = await container.searchUseCases.getSearchSuggestions(query);
+                omniboxSuggestions = suggestions.shortcuts.map(({ shortcut, page }) => {
+                    let hostname = '';
+                    try {
+                        hostname = new URL(page.url).hostname;
+                    } catch {
+                        hostname = page.url.split('/')[2] || page.url;
+                    }
+                    return {
+                        content: `@${shortcut}`,
+                        description: `<match>@${shortcut}</match> - ${page.title} | <dim>${hostname}</dim>`
+                    };
+                });
+            } else if (trimmed.startsWith('#')) {
+                // Tag suggestions with page count and example
+                const query = trimmed.slice(1);
+                const suggestions = await container.searchUseCases.getSearchSuggestions(query);
+                omniboxSuggestions = suggestions.tags.map(({ tag, pages }) => {
+                    const pageCount = pages.length;
+                    const examplePage = pages[0];
+                    const countText = pageCount === 1 ? '1 page' : `${pageCount} pages`;
+                    const exampleTitle = examplePage ? ` | ${examplePage.title}` : '';
+                    let exampleHostname = '';
+                    if (examplePage) {
+                        try {
+                            exampleHostname = new URL(examplePage.url).hostname;
+                        } catch {
+                            exampleHostname = examplePage.url.split('/')[2] || examplePage.url;
+                        }
+                    }
+                    return {
+                        content: `#${tag}`,
+                        description: `<match>#${tag}</match> - <dim>${countText}</dim>${exampleTitle ? ` | ${exampleHostname}` : ''}`
+                    };
+                });
+            } else if (trimmed.startsWith('&')) {
+                // Task suggestions
+                const query = trimmed.slice(1);
+                const suggestions = await container.searchUseCases.getSearchSuggestions(query);
+                omniboxSuggestions = suggestions.tasks.map(task => ({
+                    content: `&${task}`,
+                    description: `<match>&${task}</match> - <dim>Show task</dim>`
+                }));
+            } else if (trimmed.startsWith('!notes ')) {
+                // Note search suggestions - could add note-specific suggestions here
+                omniboxSuggestions = [{
+                    content: trimmed,
+                    description: `Search notes for: ${trimmed.slice(7)}`
+                }];
+            } else {
+                // General suggestions - show all types with rich info
+                const suggestions = await container.searchUseCases.getSearchSuggestions(trimmed);
+                omniboxSuggestions = [
+                    ...suggestions.shortcuts.map(({ shortcut, page }) => {
+                        let hostname = '';
+                        try {
+                            hostname = new URL(page.url).hostname;
+                        } catch {
+                            hostname = page.url.split('/')[2] || page.url;
+                        }
+                        return {
+                            content: `@${shortcut}`,
+                            description: `<match>@${shortcut}</match> - ${page.title} | <dim>${hostname}</dim>`
+                        };
+                    }),
+                    ...suggestions.tags.map(({ tag, pages }) => {
+                        const pageCount = pages.length;
+                        const countText = pageCount === 1 ? '1 page' : `${pageCount} pages`;
+                        return {
+                            content: `#${tag}`,
+                            description: `<match>#${tag}</match> - <dim>${countText}</dim>`
+                        };
+                    }),
+                    ...suggestions.tasks.map(task => ({
+                        content: `&${task}`,
+                        description: `<match>&${task}</match> - <dim>Show task</dim>`
+                    }))
+                ];
+            }
+
+            suggest(omniboxSuggestions.slice(0, 6)); // Limit to 6 suggestions
+        }
+    } catch (error) {
+        console.error('Omnibox suggestion error:', error);
+    }
+});
+
+chrome.omnibox.onInputEntered.addListener(async (text) => {
+    try {
+        const result = await container.searchUseCases.executeOmniboxCommand(text);
+
+        if (result.type === 'open' && result.page) {
+            // Open the page in a new tab
+            await chrome.tabs.create({
+                url: result.page.url,
+                active: true
+            });
+        } else if (result.type === 'filter' || result.type === 'search') {
+            // Handle search/filter results
+            if (result.results && result.results.length > 0) {
+                if (result.results.length === 1) {
+                    // If only one result, open it directly
+                    const pageResult = result.results[0];
+                    if (pageResult.type === 'page') {
+                        // Get the full page data
+                        const page = await container.pageService.getById(pageResult.id);
+                        if (page) {
+                            await chrome.tabs.create({
+                                url: page.url,
+                                active: true
+                            });
+                        }
+                    }
+                } else {
+                    // Multiple results - open side panel to show them
+                    const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    if (currentTab && currentTab.id) {
+                        await chrome.sidePanel.open({ tabId: currentTab.id });
+                        // Send search results to side panel
+                        setTimeout(() => {
+                            chrome.runtime.sendMessage({
+                                type: 'OMNIBOX_RESULTS',
+                                data: {
+                                    query: text,
+                                    results: result.results
+                                }
+                            });
+                        }, 500); // Small delay to ensure side panel is ready
+                    }
+                }
+            } else {
+                console.log('No results found for:', text);
+                // Could show a notification or open side panel with "no results" message
+            }
+        } else if (result.type === 'error') {
+            console.error('Omnibox command error:', result.message);
+        }
+    } catch (error) {
+        console.error('Omnibox command execution error:', error);
+    }
+});
+
 // Handle action clicks to open side panel
 chrome.action.onClicked.addListener(async (tab) => {
     await chrome.sidePanel.open({ tabId: tab.id });
 });
 
+// Listen for tab changes and notify side panel
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+    try {
+        const tab = await chrome.tabs.get(activeInfo.tabId);
+        if (tab) {
+            console.log('Tab activated:', tab.url);
+
+            // Broadcast tab change to side panel
+            try {
+                chrome.runtime.sendMessage({
+                    type: 'TAB_CHANGED',
+                    data: {
+                        id: tab.id,
+                        url: tab.url,
+                        title: tab.title,
+                        favicon: tab.favIconUrl
+                    }
+                });
+            } catch (error) {
+                // Side panel might not be open - ignore error
+                console.debug('Could not notify side panel of tab change:', error);
+            }
+        }
+    } catch (error) {
+        console.error('Failed to get active tab:', error);
+    }
+});
+
+// Listen for tab updates (URL changes, loading complete, etc.)
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    // Only notify when the page finishes loading and it's the active tab
+    if (changeInfo.status === 'complete' && tab.active && tab.url) {
+        console.log('Tab updated:', tab.url);
+
+        try {
+            chrome.runtime.sendMessage({
+                type: 'TAB_UPDATED',
+                data: {
+                    id: tab.id,
+                    url: tab.url,
+                    title: tab.title,
+                    favicon: tab.favIconUrl
+                }
+            });
+        } catch (error) {
+            // Side panel might not be open - ignore error
+            console.debug('Could not notify side panel of tab update:', error);
+        }
+    }
+});
+
 // Message handler for side panel communication
-chrome.runtime.onMessage.addListener((message: RequestMessage, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse: (response?: any) => void) => {
     if (!isRequestMessage(message)) {
         sendResponse({
             type: 'ERROR',
@@ -79,6 +283,10 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
 
             case 'GET_PAGE':
                 data = await container.pageService.getById(message.data.id);
+                break;
+
+            case 'GET_PAGE_BY_URL':
+                data = await container.pageService.getByUrl(message.data.url);
                 break;
 
             case 'GET_PAGE_BY_SHORTCUT':
@@ -159,6 +367,47 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
             case 'IMPORT_DATA':
                 // TODO: Implement data import
                 data = { message: 'Import not yet implemented' };
+                break;
+
+            case 'SAVE_SHORTCUT':
+                // Save or update page with shortcut
+                const existingPage = await container.pageService.getByUrl(message.data.url);
+                if (existingPage) {
+                    // Update existing page with shortcut
+                    data = await container.pageService.update(existingPage.id, {
+                        shortcut: message.data.shortcut
+                    });
+                } else {
+                    // Create new page entry with shortcut
+                    const currentTab = await getCurrentTab();
+                    data = await container.pageUseCases.savePage({
+                        url: message.data.url,
+                        title: currentTab?.title || 'Untitled',
+                        favicon: currentTab?.favicon,
+                        shortcut: message.data.shortcut,
+                        tags: []
+                    });
+                }
+                break;
+
+            case 'SAVE_TAGS':
+                // Save or update page with tags
+                const pageForTags = await container.pageService.getByUrl(message.data.url);
+                if (pageForTags) {
+                    // Update existing page with tags
+                    data = await container.pageService.update(pageForTags.id, {
+                        tags: message.data.tags
+                    });
+                } else {
+                    // Create new page entry with tags
+                    const currentTab = await getCurrentTab();
+                    data = await container.pageUseCases.savePage({
+                        url: message.data.url,
+                        title: currentTab?.title || 'Untitled',
+                        favicon: currentTab?.favicon,
+                        tags: message.data.tags
+                    });
+                }
                 break;
 
             default:

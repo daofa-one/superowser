@@ -17,6 +17,9 @@ export default defineManifest(async (env) => ({
   // semver is OK in "version_name"
   version_name: version,
   manifest_version: 3,
+  "omnibox": {
+    "keyword": "`"
+  },
   icons: {
     '16': 'icons/icon16.png',
     '32': 'icons/icon32.png',
@@ -51,6 +54,7 @@ export default defineManifest(async (env) => ({
     'contextMenus',
     'favicon',
     'sidePanel',
+    'omnibox',
     'scripting'
   ],
 }))
