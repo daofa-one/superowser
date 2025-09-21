@@ -139,8 +139,23 @@ const loadTaskPages = async (taskName: string) => {
   }
 }
 
-const openPage = (url: string) => {
-  chrome.tabs.create({ url })
+const openPage = async (url: string) => {
+  try {
+    const response = await store.sendMessage({
+      type: 'OPEN_PAGE',
+      data: { url }
+    })
+
+    if (response?.type === 'ERROR') {
+      throw new Error(response.error?.message || 'Failed to open page')
+    }
+  } catch (error) {
+    console.error('Failed to open page:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to focus page tab'
+    })
+  }
 }
 
 const removeFromTask = async (page: PageEntry) => {

@@ -524,10 +524,7 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 break;
 
             case 'OPEN_PAGE':
-                await chrome.tabs.create({
-                    url: message.data.url,
-                    active: !message.data.newTab
-                });
+                await focusOrOpenUrl(message.data.url);
                 data = { success: true };
                 break;
 

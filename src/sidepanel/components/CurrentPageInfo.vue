@@ -116,9 +116,26 @@ const loadCurrentPageInfo = async () => {
 }
 
 
-const openPage = () => {
-  if (currentPage.value?.url) {
-    chrome.tabs.create({ url: currentPage.value.url })
+const openPage = async () => {
+  if (!currentPage.value?.url) {
+    return
+  }
+
+  try {
+    const response = await store.sendMessage({
+      type: 'OPEN_PAGE',
+      data: { url: currentPage.value.url }
+    })
+
+    if (response?.type === 'ERROR') {
+      throw new Error(response.error?.message || 'Failed to open page')
+    }
+  } catch (error) {
+    console.error('Failed to open page:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to focus page tab'
+    })
   }
 }
 
