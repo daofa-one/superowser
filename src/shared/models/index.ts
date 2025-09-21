@@ -7,7 +7,7 @@ export interface PageEntry {
   favicon?: string
   tags: string[]
   shortcut?: string  // @shortcut for quick access
-  task?: string      // &task for grouping
+  tasks: string[]    // array of &tasks for grouping (changed from single task)
   content?: string   // extracted page content for search
   createdAt: Date
   updatedAt: Date
@@ -19,7 +19,7 @@ export interface NoteEntry {
   content: string    // highlighted text or note content
   comment?: string   // user's comment on the highlight
   tags: string[]
-  task?: string      // &task for grouping
+  tasks: string[]    // array of &tasks for grouping (changed from single task)
   position?: {       // position info for highlights
     start: number
     end: number
@@ -48,7 +48,7 @@ export interface SearchResult {
   score: number
   tags: string[]
   shortcut?: string
-  task?: string
+  tasks: string[]   // changed from single task to array
 }
 
 export interface SavePageRequest {
@@ -57,7 +57,7 @@ export interface SavePageRequest {
   favicon?: string
   tags?: string[]
   shortcut?: string
-  task?: string
+  tasks?: string[]   // changed from single task to array
   closeAfterSave?: boolean
 }
 
@@ -66,7 +66,7 @@ export interface SaveNoteRequest {
   content: string
   comment?: string
   tags?: string[]
-  task?: string
+  tasks?: string[]   // changed from single task to array
   position?: {
     start: number
     end: number
@@ -78,6 +78,6 @@ export interface SearchQuery {
   query: string
   type?: 'page' | 'note' | 'task' | 'all'
   tags?: string[]
-  task?: string
+  tasks?: string[]   // changed from single task to array
   limit?: number
 }

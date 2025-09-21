@@ -13,6 +13,12 @@ const shortcutInput = ref('')
 const showTagForm = ref(false)
 const tagInput = ref('')
 const currentTags = ref<string[]>([])
+const showSaveForm = ref(false)
+const taskInput = ref('')
+const showTaskSuggestions = ref(false)
+const availableTasks = ref<string[]>([])
+const filteredTasks = ref<string[]>([])
+const selectedTasks = ref<string[]>([])
 
 // Computed properties
 const displayUrl = computed(() => {
@@ -86,6 +92,7 @@ const loadCurrentPageInfo = async () => {
         title: tabData.title,
         favicon: tabData.favicon,
         tags: savedPage?.tags || [],
+        tasks: savedPage?.tasks || [],
         noteCount: savedPage?.noteCount || 0,
         shortcut: savedPage?.shortcut || undefined
       }
@@ -151,8 +158,9 @@ const copyUrl = async () => {
 const toggleShortcutForm = () => {
   showShortcutForm.value = !showShortcutForm.value
   if (showShortcutForm.value) {
-    // Close tag form if open
+    // Close other forms if open
     showTagForm.value = false
+    showSaveForm.value = false
     // Pre-fill with existing shortcut if any
     shortcutInput.value = currentPage.value?.shortcut || ''
   }
@@ -210,8 +218,9 @@ const cancelShortcut = () => {
 const toggleTagForm = () => {
   showTagForm.value = !showTagForm.value
   if (showTagForm.value) {
-    // Close shortcut form if open
+    // Close other forms if open
     showShortcutForm.value = false
+    showSaveForm.value = false
     // Pre-fill with existing tags if any
     currentTags.value = [...(currentPage.value?.tags || [])]
     tagInput.value = ''
@@ -278,6 +287,144 @@ const cancelTags = () => {
   showTagForm.value = false
   tagInput.value = ''
   currentTags.value = []
+}
+
+const loadAvailableTasks = async () => {
+  try {
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { type: 'GET_TASKS' },
+        (response: any) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message))
+            return
+          }
+          resolve(response)
+        }
+      )
+    }) as any
+
+    if (response && response.type === 'SUCCESS' && response.data) {
+      availableTasks.value = response.data.map((task: any) => task.name)
+      filteredTasks.value = [...availableTasks.value]
+    }
+  } catch (error) {
+    console.error('Failed to load tasks:', error)
+  }
+}
+
+const toggleSaveForm = async () => {
+  showSaveForm.value = !showSaveForm.value
+  if (showSaveForm.value) {
+    // Close other forms if open
+    showShortcutForm.value = false
+    showTagForm.value = false
+    // Load available tasks
+    await loadAvailableTasks()
+    // Pre-fill with existing tasks from saved page
+    selectedTasks.value = [...(currentPage.value?.tasks || [])]
+    // Add current task if available and not already selected
+    if (store.cache.currentTask?.name && !selectedTasks.value.includes(store.cache.currentTask.name)) {
+      selectedTasks.value.push(store.cache.currentTask.name)
+    }
+    taskInput.value = ''
+    filterTasks()
+  }
+}
+
+const filterTasks = () => {
+  const query = taskInput.value.toLowerCase()
+  if (!query) {
+    filteredTasks.value = availableTasks.value.filter(task => !selectedTasks.value.includes(task))
+  } else {
+    filteredTasks.value = availableTasks.value.filter(task =>
+      task.toLowerCase().includes(query) && !selectedTasks.value.includes(task)
+    )
+  }
+  showTaskSuggestions.value = (filteredTasks.value.length > 0 || taskInput.value.length > 0) && taskInput.value.length > 0
+}
+
+const selectTask = (taskName: string) => {
+  if (!selectedTasks.value.includes(taskName)) {
+    selectedTasks.value.push(taskName)
+  }
+  taskInput.value = ''
+  showTaskSuggestions.value = false
+}
+
+const removeSelectedTask = (index: number) => {
+  selectedTasks.value.splice(index, 1)
+}
+
+const onTaskInputChange = () => {
+  filterTasks()
+}
+
+const onTaskInputFocus = () => {
+  filterTasks()
+  showTaskSuggestions.value = filteredTasks.value.length > 0
+}
+
+const onTaskInputBlur = () => {
+  // Delay hiding suggestions to allow for clicks
+  setTimeout(() => {
+    showTaskSuggestions.value = false
+  }, 200)
+}
+
+const saveCurrentPage = async () => {
+  if (!currentPage.value) return
+
+  try {
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        {
+          type: 'SAVE_CURRENT_TAB',
+          data: {
+            tasks: selectedTasks.value.length > 0 ? selectedTasks.value : undefined
+          }
+        },
+        (response: any) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message))
+            return
+          }
+          resolve(response)
+        }
+      )
+    }) as any
+
+    if (response && response.type === 'SUCCESS') {
+      showSaveForm.value = false
+      isPageSaved.value = true
+
+      const taskMessage = selectedTasks.value.length > 0
+        ? `Page saved to ${selectedTasks.value.length} task(s): ${selectedTasks.value.join(', ')}`
+        : 'Page saved successfully'
+
+      store.addNotification({
+        type: 'success',
+        message: taskMessage
+      })
+
+      // Reload page info to get updated data
+      await loadCurrentPageInfo()
+    } else {
+      throw new Error('Failed to save page')
+    }
+  } catch (error) {
+    console.error('Failed to save page:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to save page'
+    })
+  }
+}
+
+const cancelSave = () => {
+  showSaveForm.value = false
+  taskInput.value = ''
+  selectedTasks.value = []
 }
 
 // Listen for tab changes from background script
@@ -350,6 +497,17 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <div class="tasks-container">
+          <div v-if="currentPage.tasks && currentPage.tasks.length > 0" class="tasks">
+            <span v-for="task in currentPage.tasks" :key="task" class="task">
+              &{{ task }}
+            </span>
+          </div>
+          <div v-else class="no-tasks">
+            No tasks
+          </div>
+        </div>
+
         <div class="notes-container">
           <div v-if="hasNotes" class="notes-indicator">
             📝 {{ currentPage.noteCount || 0 }} note(s)
@@ -365,9 +523,9 @@ onUnmounted(() => {
         <div class="primary-actions">
           <button
             v-if="canAddToTask"
-            @click="addToCurrentTask"
             class="btn btn-primary"
             :disabled="store.ui.isLoading"
+            @click="addToCurrentTask"
           >
             {{ taskActionLabel }}
           </button>
@@ -382,24 +540,27 @@ onUnmounted(() => {
 
           <button
             v-else
-            @click="saveWithOptions"
             class="btn btn-secondary"
+            @click="saveWithOptions"
           >
             Save Page
           </button>
         </div>
 
         <div class="secondary-actions">
-          <button @click="toggleShortcutForm" class="btn btn-icon" title="Set shortcut">
+          <button class="btn btn-icon" title="Save page" @click="toggleSaveForm">
+            👍
+          </button>
+          <button class="btn btn-icon" title="Set shortcut" @click="toggleShortcutForm">
             @
           </button>
-          <button @click="toggleTagForm" class="btn btn-icon" title="Manage tags">
+          <button class="btn btn-icon" title="Manage tags" @click="toggleTagForm">
             #
           </button>
-          <button @click="copyUrl" class="btn btn-icon" title="Copy URL">
+          <button class="btn btn-icon" title="Copy URL" @click="copyUrl">
             📋
           </button>
-          <button @click="openPage" class="btn btn-icon" title="Open in new tab">
+          <button class="btn btn-icon" title="Open in new tab" @click="openPage">
             🔗
           </button>
         </div>
@@ -437,10 +598,10 @@ onUnmounted(() => {
         </div>
 
         <div class="form-actions">
-          <button @click="saveShortcut" class="btn btn-primary" :disabled="!shortcutInput.trim()">
+          <button class="btn btn-primary" :disabled="!shortcutInput.trim()" @click="saveShortcut">
             Save
           </button>
-          <button @click="cancelShortcut" class="btn btn-secondary">
+          <button class="btn btn-secondary" @click="cancelShortcut">
             Cancel
           </button>
         </div>
@@ -465,7 +626,7 @@ onUnmounted(() => {
                 @keyup.enter="addTag"
                 @keyup.escape="cancelTags"
               />
-              <button @click="addTag" class="btn btn-add-tag" :disabled="!tagInput.trim()">
+              <button class="btn btn-add-tag" :disabled="!tagInput.trim()" @click="addTag">
                 Add
               </button>
             </div>
@@ -480,7 +641,7 @@ onUnmounted(() => {
                 class="tag-item"
               >
                 {{ tag }}
-                <button @click="removeTag(index)" class="tag-remove">×</button>
+                <button class="tag-remove" @click="removeTag(index)">×</button>
               </span>
             </div>
           </div>
@@ -490,10 +651,81 @@ onUnmounted(() => {
         </div>
 
         <div class="form-actions">
-          <button @click="saveTags" class="btn btn-primary">
+          <button class="btn btn-primary" @click="saveTags">
             Save Tags
           </button>
-          <button @click="cancelTags" class="btn btn-secondary">
+          <button class="btn btn-secondary" @click="cancelTags">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <!-- Save Page Form Section -->
+      <div v-if="showSaveForm" class="save-form-section">
+        <div class="form-header">
+          <h4>Save Page</h4>
+        </div>
+
+        <div class="form-content">
+          <!-- Selected Tasks Display -->
+          <div v-if="selectedTasks.length > 0" class="input-group">
+            <label>Selected Tasks:</label>
+            <div class="selected-tasks-list">
+              <span
+                v-for="(task, index) in selectedTasks"
+                :key="task"
+                class="selected-task-item"
+              >
+                📁 {{ task }}
+                <button class="task-remove" @click="removeSelectedTask(index)">×</button>
+              </span>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label for="task-input">Add Task (optional):</label>
+            <div class="task-input-wrapper">
+              <input
+                id="task-input"
+                v-model="taskInput"
+                type="text"
+                placeholder="Type to search tasks or create new"
+                class="task-input"
+                autocomplete="off"
+                @input="onTaskInputChange"
+                @focus="onTaskInputFocus"
+                @blur="onTaskInputBlur"
+                @keyup.enter="taskInput && selectTask(taskInput)"
+                @keyup.escape="cancelSave"
+              />
+
+              <!-- Task Suggestions Dropdown -->
+              <div v-if="showTaskSuggestions" class="task-suggestions">
+                <div
+                  v-for="task in filteredTasks"
+                  :key="task"
+                  class="task-suggestion-item"
+                  @mousedown="selectTask(task)"
+                >
+                  📁 {{ task }}
+                </div>
+                <div v-if="taskInput && !filteredTasks.includes(taskInput) && !selectedTasks.includes(taskInput)" class="task-suggestion-item create-new" @mousedown="selectTask(taskInput)">
+                  ➕ Create new task: "{{ taskInput }}"
+                </div>
+              </div>
+            </div>
+
+            <div v-if="store.cache.currentTask" class="current-task-info">
+              Current active task: <strong>{{ store.cache.currentTask.name }}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-primary" @click="saveCurrentPage">
+            👍 Save Page
+          </button>
+          <button class="btn btn-secondary" @click="cancelSave">
             Cancel
           </button>
         </div>
@@ -607,6 +839,10 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 
+.tasks-container {
+  margin-bottom: 8px;
+}
+
 .tags {
   display: flex;
   gap: 6px;
@@ -623,6 +859,27 @@ onUnmounted(() => {
 }
 
 .no-tags {
+  font-size: 12px;
+  color: #999;
+  font-style: italic;
+}
+
+.tasks {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.task {
+  font-size: 12px;
+  background: #fff3cd;
+  color: #856404;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #ffeaa7;
+}
+
+.no-tasks {
   font-size: 12px;
   color: #999;
   font-style: italic;
@@ -894,6 +1151,122 @@ onUnmounted(() => {
   font-size: 13px;
   color: #999;
   font-style: italic;
+}
+
+/* Save Form Section */
+.save-form-section {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f0f8ff;
+  border-radius: 8px;
+  border: 1px solid #c3d9ff;
+}
+
+.task-input-wrapper {
+  position: relative;
+}
+
+.task-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.task-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.task-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+.task-suggestion-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.2s;
+}
+
+.task-suggestion-item:hover {
+  background-color: #f5f5f5;
+}
+
+.task-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.task-suggestion-item.create-new {
+  background-color: #e8f5e8;
+  color: #2e7d32;
+  font-style: italic;
+}
+
+.task-suggestion-item.create-new:hover {
+  background-color: #c8e6c9;
+}
+
+.current-task-info {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #666;
+  padding: 6px 8px;
+  background: #e3f2fd;
+  border-radius: 4px;
+  border-left: 3px solid #2196f3;
+}
+
+.selected-tasks-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.selected-task-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #e8f5e8;
+  color: #2e7d32;
+  padding: 4px 8px;
+  border-radius: 16px;
+  font-size: 13px;
+  border: 1px solid #c8e6c9;
+}
+
+.task-remove {
+  background: none;
+  border: none;
+  color: #2e7d32;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  margin-left: 2px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.task-remove:hover {
+  opacity: 1;
 }
 
 /* No Page State */

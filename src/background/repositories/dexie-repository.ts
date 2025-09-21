@@ -34,6 +34,34 @@ db.version(1).stores({
   settings: '++key'
 })
 
+// Version 2: Migrate from single task to tasks array
+db.version(2).stores({
+  pages: '++id, url, title, *tags, shortcut, *tasks, createdAt, updatedAt',
+  notes: '++id, pageId, content, *tags, *tasks, createdAt, updatedAt',
+  tasks: '++id, name, isActive, createdAt, updatedAt',
+  settings: '++key'
+}).upgrade(trans => {
+  // Migrate existing pages from task to tasks array
+  return trans.pages.toCollection().modify(page => {
+    if (page.task) {
+      page.tasks = [page.task]
+      delete page.task
+    } else {
+      page.tasks = []
+    }
+  }).then(() => {
+    // Migrate existing notes from task to tasks array
+    return trans.notes.toCollection().modify(note => {
+      if (note.task) {
+        note.tasks = [note.task]
+        delete note.task
+      } else {
+        note.tasks = []
+      }
+    })
+  })
+})
+
 // Utility functions
 const generateId = () => crypto.randomUUID()
 const now = () => new Date()
@@ -49,7 +77,7 @@ export class DexiePageService implements IPageService {
         favicon: request.favicon,
         tags: request.tags || existing.tags,
         shortcut: request.shortcut || existing.shortcut,
-        task: request.task || existing.task,
+        tasks: request.tasks || existing.tasks,
         updatedAt: now()
       }
       return this.update(existing.id, updates)
@@ -62,7 +90,7 @@ export class DexiePageService implements IPageService {
         favicon: request.favicon,
         tags: request.tags || [],
         shortcut: request.shortcut,
-        task: request.task,
+        tasks: request.tasks || [],
         createdAt: now(),
         updatedAt: now()
       }
@@ -85,7 +113,7 @@ export class DexiePageService implements IPageService {
   }
 
   async getByTask(task: string): Promise<PageEntry[]> {
-    return await db.pages.where('task').equals(task).toArray()
+    return await db.pages.where('tasks').equals(task).toArray()
   }
 
   async getByTags(tags: string[]): Promise<PageEntry[]> {
@@ -135,7 +163,7 @@ export class DexieNoteService implements INoteService {
       content: request.content,
       comment: request.comment,
       tags: request.tags || [],
-      task: request.task,
+      tasks: request.tasks || [],
       position: request.position,
       createdAt: now(),
       updatedAt: now()
@@ -154,7 +182,7 @@ export class DexieNoteService implements INoteService {
   }
 
   async getByTask(task: string): Promise<NoteEntry[]> {
-    return await db.notes.where('task').equals(task).toArray()
+    return await db.notes.where('tasks').equals(task).toArray()
   }
 
   async getByTags(tags: string[]): Promise<NoteEntry[]> {

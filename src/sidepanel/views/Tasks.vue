@@ -2,7 +2,7 @@
   <div class="tasks">
     <div class="tasks-header">
       <h2>Tasks</h2>
-      <button @click="createNewTask" class="btn-primary">New Task</button>
+      <button class="btn-primary" @click="createNewTask">New Task</button>
     </div>
 
     <div class="tasks-list">

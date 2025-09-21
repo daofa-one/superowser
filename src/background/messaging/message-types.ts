@@ -27,7 +27,7 @@ export interface SaveCurrentTabMessage extends BaseMessage {
   data?: {
     tags?: string[]
     shortcut?: string
-    task?: string
+    tasks?: string[]
     closeAfterSave?: boolean
   }
 }
