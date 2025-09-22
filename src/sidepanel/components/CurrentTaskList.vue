@@ -348,22 +348,31 @@ const cancelTaskSelection = () => {
 
 // Listen for task changes
 const onTaskChange = (message: RuntimeMessage) => {
-  if (message?.type === 'TASK_CHANGED') {
-    console.log('Task change detected, reloading task info...')
-    loadCurrentTask()
-  } else if (message?.type === 'STATE_UPDATE') {
-    if (message.path === 'user.currentTask' || message.path === 'currentTask') {
-      void applyCurrentTask(message.value ?? null)
-    } else if (message.path === 'user.previousTask' || message.path === 'previousTask') {
-      store.updateCache(message.path, message.value ?? null)
-    } else if (message.path?.startsWith('task.')) {
-      const currentTaskName = currentTask.value?.name
-      if (currentTaskName && message.path.includes(currentTaskName) && message.path.includes('contentChanged')) {
-        console.log('Current task content changed, reloading pages...')
-        loadTaskPages(currentTaskName)
+  // Handle async operations without returning a Promise
+  (async () => {
+    try {
+      if (message?.type === 'TASK_CHANGED') {
+        console.log('Task change detected, reloading task info...')
+        await loadCurrentTask()
+      } else if (message?.type === 'STATE_UPDATE') {
+        if (message.path === 'user.currentTask' || message.path === 'currentTask') {
+          await applyCurrentTask(message.value ?? null)
+        } else if (message.path === 'user.previousTask' || message.path === 'previousTask') {
+          store.updateCache(message.path, message.value ?? null)
+        } else if (message.path?.startsWith('task.')) {
+          const currentTaskName = currentTask.value?.name
+          if (currentTaskName && message.path.includes(currentTaskName) && message.path.includes('contentChanged')) {
+            console.log('Current task content changed, reloading pages...')
+            await loadTaskPages(currentTaskName)
+          }
+        }
       }
+    } catch (error) {
+      console.error('Error handling task change:', error)
     }
-  }
+  })()
+
+  // Return false immediately (synchronously)
   return false
 }
 
