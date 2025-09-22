@@ -464,6 +464,25 @@ onUnmounted(() => {
             {{ currentPage.title }}
           </div>
         </div>
+
+        <div class="page-status">
+          <div
+            v-if="isPageSaved"
+            class="status-badge status-saved"
+            title="This page is saved in Superowser"
+          >
+            <span class="status-icon">✓</span>
+            <span class="status-text">Saved</span>
+          </div>
+          <div
+            v-else
+            class="status-badge status-unsaved"
+            title="This page is not saved in Superowser"
+          >
+            <span class="status-icon">○</span>
+            <span class="status-text">Not Saved</span>
+          </div>
+        </div>
       </div>
 
       <!-- Middle Section: Tags and Notes -->
@@ -742,6 +761,46 @@ onUnmounted(() => {
   gap: 12px;
   align-items: flex-start;
   margin-bottom: 12px;
+}
+
+.page-status {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.2s ease;
+}
+
+.status-saved {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.status-unsaved {
+  background: #f8f9fa;
+  color: #6c757d;
+  border: 1px solid #e9ecef;
+}
+
+.status-icon {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.status-text {
+  font-size: 10px;
+  line-height: 1;
 }
 
 .page-icon {
