@@ -11,6 +11,8 @@ interface Props {
   allowEdit?: boolean
   allowDelete?: boolean
   contextMenuActions?: ('edit' | 'removeFromPage' | 'removeFromTask' | 'delete')[]
+  emptyMessage?: string
+  showEmptyState?: boolean
 }
 
 interface Emits {
@@ -24,7 +26,9 @@ const props = withDefaults(defineProps<Props>(), {
   showTaskAssociation: true,
   allowEdit: true,
   allowDelete: true,
-  contextMenuActions: () => ['edit', 'removeFromPage', 'removeFromTask', 'delete']
+  contextMenuActions: () => ['edit', 'removeFromPage', 'removeFromTask', 'delete'],
+  emptyMessage: 'No notes yet',
+  showEmptyState: true
 })
 
 const emit = defineEmits<Emits>()
@@ -151,9 +155,9 @@ onUnmounted(() => {
     </ul>
 
     <!-- Empty State -->
-    <div v-else class="notes-empty">
+    <div v-else-if="showEmptyState" class="notes-empty">
       <div class="empty-icon">📝</div>
-      <div class="empty-message">No notes yet</div>
+      <div class="empty-message">{{ emptyMessage }}</div>
     </div>
 
     <!-- Context Menu -->
@@ -180,7 +184,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 0;
   padding: 16px;
   background: #fff;
   border: 1px solid #e9ecef;

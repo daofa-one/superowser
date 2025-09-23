@@ -592,21 +592,25 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 break;
 
             case 'GET_NOTES_BY_PAGE':
-                data = await container.noteService.getByPageId(message.data.pageId);
+                data = await container.notesUseCases.getNotesByPage(message.data.pageId);
+                break;
+
+            case 'GET_ALL_NOTES':
+                data = await container.notesUseCases.getAllNotes();
                 break;
 
             case 'UPDATE_NOTE':
                 const { id, ...updates } = message.data;
-                data = await container.noteService.update(id, updates);
+                data = await container.notesUseCases.updateNote(id, updates);
                 break;
 
             case 'DELETE_NOTE':
-                await container.noteService.delete(message.data.id);
+                await container.notesUseCases.deleteNote(message.data.id);
                 data = { success: true };
                 break;
 
             case 'UPDATE_PAGE':
-                data = await container.pageService.update(message.data.id, message.data.updates);
+                data = await container.pageUseCases.updatePage(message.data.id, message.data.updates);
                 break;
 
             case 'DELETE_PAGE':

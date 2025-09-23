@@ -11,6 +11,7 @@ import {
   TaskUseCases,
   SearchUseCases
 } from './use-cases'
+import { NotesUseCases } from './use-cases/notes-use-cases'
 
 import {
   IPageService,
@@ -284,6 +285,7 @@ export class DIContainer {
   private _pageUseCases: PageUseCases
   private _taskUseCases: TaskUseCases
   private _searchUseCases: SearchUseCases
+  private _notesUseCases: NotesUseCases
 
   private constructor() {
     // Initialize services (repository layer)
@@ -315,6 +317,11 @@ export class DIContainer {
       this._taskService,
       this._searchService,
       this._taskUseCases
+    )
+
+    this._notesUseCases = new NotesUseCases(
+      this._noteService,
+      this._taskService
     )
   }
 
@@ -348,6 +355,12 @@ export class DIContainer {
       this._searchService,
       this._taskUseCases
     )
+
+    this._notesUseCases = new NotesUseCases(
+      this._noteService,
+      this._taskService,
+      backgroundStore
+    )
   }
 
   // Getters for services
@@ -378,5 +391,9 @@ export class DIContainer {
 
   get searchUseCases(): SearchUseCases {
     return this._searchUseCases
+  }
+
+  get notesUseCases(): NotesUseCases {
+    return this._notesUseCases
   }
 }

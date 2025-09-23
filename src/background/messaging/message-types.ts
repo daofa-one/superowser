@@ -157,6 +157,10 @@ export interface GetNotesByPageMessage extends BaseMessage {
   data: { pageId: string }
 }
 
+export interface GetAllNotesMessage extends BaseMessage {
+  type: 'GET_ALL_NOTES'
+}
+
 export interface UpdateNoteMessage extends BaseMessage {
   type: 'UPDATE_NOTE'
   data: { id: string; [key: string]: any }
@@ -197,6 +201,7 @@ export type RequestMessage =
   | GetRecentPagesMessage
   | RemovePageFromTaskMessage
   | GetNotesByPageMessage
+  | GetAllNotesMessage
   | UpdateNoteMessage
   | DeleteNoteMessage
 

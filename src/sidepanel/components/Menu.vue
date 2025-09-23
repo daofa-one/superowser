@@ -12,6 +12,7 @@ interface MenuItem {
 const items: MenuItem[] = [
   { label: 'Home', path: '/' },
   { label: 'Tasks', path: '/tasks' },
+  { label: 'Notes', path: '/notes' },
   { label: 'Chat', path: '/chat' }
 ];
 

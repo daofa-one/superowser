@@ -167,15 +167,16 @@ const shouldShowSeparator = () => {
     </button>
 
     <!-- Remove from task options -->
-    <button
-      v-for="task in note.tasks"
-      v-if="shouldShowRemoveFromTask()"
-      :key="task"
-      class="menu-item"
-      @click="handleRemoveFromTask(task)"
-    >
-      📁 Remove from &{{ task }}
-    </button>
+    <template v-if="shouldShowRemoveFromTask()">
+      <button
+        v-for="task in note.tasks"
+        :key="task"
+        class="menu-item"
+        @click="handleRemoveFromTask(task)"
+      >
+        📁 Remove from &{{ task }}
+      </button>
+    </template>
 
     <!-- Separator -->
     <div

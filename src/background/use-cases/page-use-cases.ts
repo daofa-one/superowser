@@ -53,6 +53,8 @@ export class PageUseCases {
       }
     }
 
+    this.notifyPageUpdate(page)
+
     return page
   }
 
@@ -79,7 +81,9 @@ export class PageUseCases {
   }
 
   async updatePageTags(pageId: string, tags: string[]): Promise<PageEntry> {
-    return this.pageService.update(pageId, { tags })
+    const updated = await this.pageService.update(pageId, { tags })
+    this.notifyPageUpdate(updated)
+    return updated
   }
 
   async setPageShortcut(pageId: string, shortcut: string): Promise<PageEntry> {
@@ -89,7 +93,9 @@ export class PageUseCases {
       throw new Error(`Shortcut @${shortcut} is already in use`)
     }
 
-    return this.pageService.update(pageId, { shortcut })
+    const updated = await this.pageService.update(pageId, { shortcut })
+    this.notifyPageUpdate(updated)
+    return updated
   }
 
   async movePageToTask(pageId: string, newTaskName: string): Promise<PageEntry> {
@@ -115,7 +121,9 @@ export class PageUseCases {
     }
     await this.taskService.addPage(newTask.id, pageId)
 
-    return this.pageService.update(pageId, { tasks: [newTaskName] })
+    const updated = await this.pageService.update(pageId, { tasks: [newTaskName] })
+    this.notifyPageUpdate(updated)
+    return updated
   }
 
   async searchPages(query: string, limit = 20): Promise<SearchResult[]> {
@@ -159,5 +167,26 @@ export class PageUseCases {
   async duplicateShortcutCheck(shortcut: string, excludePageId?: string): Promise<boolean> {
     const existing = await this.pageService.getByShortcut(shortcut)
     return existing ? (excludePageId ? existing.id !== excludePageId : true) : false
+  }
+
+  async updatePage(pageId: string, updates: Partial<PageEntry>): Promise<PageEntry> {
+    const updated = await this.pageService.update(pageId, updates)
+    this.notifyPageUpdate(updated)
+    return updated
+  }
+
+  private notifyPageUpdate(page: PageEntry | null): void {
+    if (!page || !this.backgroundStore) {
+      return
+    }
+
+    try {
+      this.backgroundStore.broadcastStateUpdate(`page.${page.id}.updated`, page)
+      if (page.url) {
+        this.backgroundStore.broadcastStateUpdate(`page.url.${encodeURIComponent(page.url)}.updated`, page)
+      }
+    } catch (error) {
+      console.warn('Could not broadcast page update:', error)
+    }
   }
 }
