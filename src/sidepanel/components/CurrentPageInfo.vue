@@ -40,6 +40,14 @@ const showNoteMenu = ref(false)
 const selectedNoteId = ref<string | null>(null)
 const selectedNote = ref<NoteEntry | null>(null)
 const noteMenuPosition = ref({ x: 0, y: 0 })
+const editingNoteId = ref<string | null>(null)
+const editNoteContent = ref('')
+const editNoteComment = ref('')
+const editIncludePageAssociation = ref(true)
+const editSelectedNoteTasks = ref<string[]>([])
+const editNoteTaskInput = ref('')
+const showEditTaskSuggestions = ref(false)
+const editFilteredTasks = ref<string[]>([])
 
 const formatDateTime = (value?: Date | string) => {
   if (!value) return ''
@@ -716,6 +724,158 @@ const removeNoteFromTask = async (taskName: string) => {
   }
 }
 
+const startEditingNote = async () => {
+  if (!selectedNote.value) return
+
+  editingNoteId.value = selectedNote.value.id
+  editNoteContent.value = selectedNote.value.content
+  editNoteComment.value = selectedNote.value.comment || ''
+  editIncludePageAssociation.value = !!selectedNote.value.pageId
+  editSelectedNoteTasks.value = [...(selectedNote.value.tasks || [])]
+  editNoteTaskInput.value = ''
+  showEditTaskSuggestions.value = false
+
+  // Load available tasks for suggestions
+  await loadAvailableTasks()
+  filterEditTasks()
+
+  hideNoteMenu()
+}
+
+const cancelEditNote = () => {
+  editingNoteId.value = null
+  editNoteContent.value = ''
+  editNoteComment.value = ''
+  editIncludePageAssociation.value = true
+  editSelectedNoteTasks.value = []
+  editNoteTaskInput.value = ''
+  showEditTaskSuggestions.value = false
+  editFilteredTasks.value = []
+}
+
+const addEditNoteTask = (taskName: string) => {
+  const normalized = normalizeTaskName(taskName)
+  if (!normalized) {
+    return
+  }
+
+  if (!editSelectedNoteTasks.value.includes(normalized)) {
+    editSelectedNoteTasks.value.push(normalized)
+  }
+  editNoteTaskInput.value = ''
+  showEditTaskSuggestions.value = false
+}
+
+const removeEditNoteTask = (taskName: string) => {
+  editSelectedNoteTasks.value = editSelectedNoteTasks.value.filter(task => task !== taskName)
+}
+
+const resetEditNoteTasks = () => {
+  editSelectedNoteTasks.value = [...(currentPage.value?.tasks || [])]
+  editNoteTaskInput.value = ''
+}
+
+const clearEditNoteTasks = () => {
+  editSelectedNoteTasks.value = []
+  editNoteTaskInput.value = ''
+}
+
+const filterEditTasks = () => {
+  const query = editNoteTaskInput.value.toLowerCase()
+  if (!query) {
+    editFilteredTasks.value = availableTasks.value.filter(task => !editSelectedNoteTasks.value.includes(task))
+  } else {
+    editFilteredTasks.value = availableTasks.value.filter(task =>
+      task.toLowerCase().includes(query) && !editSelectedNoteTasks.value.includes(task)
+    )
+  }
+  showEditTaskSuggestions.value = (editFilteredTasks.value.length > 0 || editNoteTaskInput.value.length > 0) && editNoteTaskInput.value.length > 0
+}
+
+const onEditTaskInputChange = () => {
+  filterEditTasks()
+}
+
+const onEditTaskInputFocus = () => {
+  filterEditTasks()
+  showEditTaskSuggestions.value = editFilteredTasks.value.length > 0
+}
+
+const onEditTaskInputBlur = () => {
+  // Delay hiding suggestions to allow for clicks
+  setTimeout(() => {
+    showEditTaskSuggestions.value = false
+  }, 200)
+}
+
+const selectEditTask = (taskName: string) => {
+  addEditNoteTask(taskName)
+}
+
+const saveEditedNote = async () => {
+  if (!editingNoteId.value) return
+
+  const content = editNoteContent.value.trim()
+  if (!content) {
+    store.addNotification({
+      type: 'error',
+      message: 'Note content cannot be empty'
+    })
+    return
+  }
+
+  try {
+    const updates: any = { content }
+
+    // Handle comment
+    const comment = editNoteComment.value.trim()
+    if (comment) {
+      updates.comment = comment
+    } else {
+      updates.comment = null // Clear comment if empty
+    }
+
+    // Handle page association
+    if (editIncludePageAssociation.value && currentPage.value?.id) {
+      updates.pageId = currentPage.value.id
+    } else {
+      updates.pageId = null
+    }
+
+    // Handle task associations
+    if (editSelectedNoteTasks.value.length > 0) {
+      updates.tasks = editSelectedNoteTasks.value
+    } else {
+      updates.tasks = []
+    }
+
+    const response = await store.sendMessage({
+      type: 'UPDATE_NOTE',
+      data: {
+        id: editingNoteId.value,
+        ...updates
+      }
+    })
+
+    if (response?.type === 'SUCCESS') {
+      store.addNotification({
+        type: 'success',
+        message: 'Note updated successfully'
+      })
+      await loadCurrentPageInfo()
+      cancelEditNote()
+    } else {
+      throw new Error('Failed to update note')
+    }
+  } catch (error) {
+    console.error('Failed to update note:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to update note'
+    })
+  }
+}
+
 // Listen for tab changes from background script
 const onTabChange = (message: { type?: string; path?: string }, _sender: unknown, _sendResponse: unknown) => {
   if (message.type === 'TAB_CHANGED' || message.type === 'TAB_UPDATED') {
@@ -1131,17 +1291,128 @@ onUnmounted(() => {
             v-for="note in pageNotes"
             :key="note.id"
             class="note-item"
-            @contextmenu="showNoteContextMenu($event, note.id)"
+            :class="{ 'editing': editingNoteId === note.id }"
+            @contextmenu="editingNoteId !== note.id ? showNoteContextMenu($event, note.id) : null"
             @click="hideNoteMenu"
           >
-            <p class="note-content">{{ note.content }}</p>
-            <p v-if="note.comment" class="note-comment">💬 {{ note.comment }}</p>
-            <div class="note-meta">
-              <span class="note-timestamp">{{ formatDateTime(note.createdAt) }}</span>
-              <div class="note-links">
-                <span v-if="note.pageId" class="note-link-badge">📄 Page</span>
-                <div v-if="note.tasks && note.tasks.length" class="note-tasks">
-                  <span v-for="task in note.tasks" :key="task" class="note-task">&{{ task }}</span>
+            <!-- Edit Mode -->
+            <div v-if="editingNoteId === note.id" class="note-edit-form">
+              <div class="edit-form-group">
+                <label for="edit-note-content">Note Content *</label>
+                <textarea
+                  id="edit-note-content"
+                  v-model="editNoteContent"
+                  rows="4"
+                  placeholder="Edit note content"
+                  class="edit-note-textarea"
+                  @keyup.escape="cancelEditNote"
+                ></textarea>
+              </div>
+
+              <div class="edit-form-group">
+                <label for="edit-note-comment">Comment (optional)</label>
+                <input
+                  id="edit-note-comment"
+                  v-model="editNoteComment"
+                  type="text"
+                  placeholder="Edit comment"
+                  class="edit-note-comment-input"
+                  @keyup.escape="cancelEditNote"
+                />
+              </div>
+
+              <div class="edit-form-group association-group">
+                <label>Link to page</label>
+                <div class="association-row">
+                  <label class="association-toggle">
+                    <input
+                      v-model="editIncludePageAssociation"
+                      type="checkbox"
+                    />
+                    <span>Include current page</span>
+                  </label>
+                  <span v-if="editIncludePageAssociation && currentPage" class="association-chip">
+                    {{ currentPage.title || displayUrl }}
+                    <button type="button" @click="editIncludePageAssociation = false">×</button>
+                  </span>
+                  <span v-else class="association-hint">Note will not be linked to the page.</span>
+                </div>
+              </div>
+
+              <div class="edit-form-group association-group">
+                <label>Link to tasks</label>
+                <div class="association-row">
+                  <div v-if="editSelectedNoteTasks.length" class="association-chips">
+                    <span v-for="task in editSelectedNoteTasks" :key="task" class="association-chip">
+                      &{{ task }}
+                      <button type="button" @click="removeEditNoteTask(task)">×</button>
+                    </span>
+                  </div>
+                  <span v-else class="association-hint">No tasks linked</span>
+                </div>
+                <div class="task-chip-actions">
+                  <button type="button" class="btn btn-secondary btn-small" @click="resetEditNoteTasks">
+                    Use page tasks
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-small" @click="clearEditNoteTasks">
+                    Clear tasks
+                  </button>
+                  <div class="task-input-wrapper">
+                    <input
+                      v-model="editNoteTaskInput"
+                      type="text"
+                      placeholder="Type to search tasks or create new"
+                      class="note-task-input"
+                      autocomplete="off"
+                      @input="onEditTaskInputChange"
+                      @focus="onEditTaskInputFocus"
+                      @blur="onEditTaskInputBlur"
+                      @keyup.enter.prevent="editNoteTaskInput && addEditNoteTask(editNoteTaskInput)"
+                    />
+
+                    <!-- Task Suggestions Dropdown -->
+                    <div v-if="showEditTaskSuggestions" class="task-suggestions">
+                      <div
+                        v-for="task in editFilteredTasks"
+                        :key="task"
+                        class="task-suggestion-item"
+                        @mousedown="selectEditTask(task)"
+                      >
+                        📁 {{ task }}
+                      </div>
+                      <div
+                        v-if="editNoteTaskInput && !editFilteredTasks.includes(editNoteTaskInput) && !editSelectedNoteTasks.includes(editNoteTaskInput)"
+                        class="task-suggestion-item create-new"
+                        @mousedown="selectEditTask(editNoteTaskInput)"
+                      >
+                        ➕ Create new task: "{{ editNoteTaskInput }}"
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="edit-form-actions">
+                <button class="btn btn-primary btn-small" :disabled="!editNoteContent.trim()" @click="saveEditedNote">
+                  Save
+                </button>
+                <button class="btn btn-secondary btn-small" @click="cancelEditNote">
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            <!-- View Mode -->
+            <div v-else>
+              <p class="note-content">{{ note.content }}</p>
+              <p v-if="note.comment" class="note-comment">💬 {{ note.comment }}</p>
+              <div class="note-meta">
+                <span class="note-timestamp">{{ formatDateTime(note.createdAt) }}</span>
+                <div class="note-links">
+                  <span v-if="note.pageId" class="note-link-badge">📄 Page</span>
+                  <div v-if="note.tasks && note.tasks.length" class="note-tasks">
+                    <span v-for="task in note.tasks" :key="task" class="note-task">&{{ task }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1156,6 +1427,14 @@ onUnmounted(() => {
         :style="{ left: noteMenuPosition.x + 'px', top: noteMenuPosition.y + 'px' }"
         @click.stop
       >
+        <!-- Edit note option -->
+        <button class="menu-item" @click="startEditingNote">
+          ✏️ Edit note
+        </button>
+
+        <!-- Separator -->
+        <div class="menu-separator"></div>
+
         <!-- Remove from page option (only if note is linked to page) -->
         <button
           v-if="selectedNote.pageId"
@@ -1621,6 +1900,12 @@ onUnmounted(() => {
   margin-top: 8px;
 }
 
+.task-chip-actions .task-input-wrapper {
+  flex: 1;
+  min-width: 100%;
+  margin-top: 8px;
+}
+
 .notes-section {
   margin-top: 16px;
   padding: 16px;
@@ -2056,5 +2341,78 @@ onUnmounted(() => {
   height: 1px;
   background: #e0e0e0;
   margin: 4px 0;
+}
+
+/* Note Edit Form */
+.note-item.editing {
+  background-color: #f8fafc;
+  border: 2px solid #e2e8f0;
+}
+
+.note-edit-form {
+  padding: 8px;
+}
+
+.edit-form-group {
+  margin-bottom: 12px;
+}
+
+.edit-form-group:last-child {
+  margin-bottom: 0;
+}
+
+.edit-form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #555;
+  margin-bottom: 4px;
+}
+
+.edit-note-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.2s;
+}
+
+.edit-note-textarea:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.edit-note-comment-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.edit-note-comment-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.edit-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 12px;
+  min-height: 28px;
 }
 </style>
