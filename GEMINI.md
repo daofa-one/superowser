@@ -31,7 +31,6 @@
 - Attach screenshots or short clips for sidepanel UI changes and outline required extension permissions updates.
 - Request at least one reviewer familiar with the affected surface and ensure `pnpm lint` passes before requesting review.
 
-
 # Superowser Extension Design Summary
 
 _Last updated: 2025-09-20 04:42:19_
@@ -58,11 +57,11 @@ interface.
 
 ### 2. 🔍 Retrieving
 - **Omnibox search**
-  - `ext:@shortcut` → open saved page
-  - `ext:#tag` → filter by tag
-  - `ext:&task` → show task group
-  - `ext:!notes query` → search within notes
-  - `ext:query` → fuzzy search
+  - `` ` @shortcut`` → open saved page
+  - `` ` #tag`` → filter by tag
+  - `` ` &task``  → show task group
+  - `` ` !notes query``  → search within notes
+  - `` ` query``  → fuzzy search
 - Autosuggestion includes:
   - Favicon, title, tags, shortcut, date, collection
 - Fuzzy match logic (e.g. `@mlblog` matches `@ml_blog`, `@mlblg`)
@@ -82,7 +81,7 @@ interface.
 - Right-click highlighted text → "Save Highlight to Task"
 - Optionally add comment, tags, task
 - Stored under `NoteEntry`
-- Search via `ext:!notes ...`
+- Search via `` ` !notes ...``
 - Displayed in panel under 📝 marker
 - Lightweight: no injected UI or DOM anchors
 
@@ -92,11 +91,11 @@ interface.
 
 | Pattern | Meaning |
 |---------|---------|
-| `ext:@shortcut` | Open saved page |
-| `ext:#tag` | Search by tag |
-| `ext:&task` | Show collection/task |
-| `ext:query` | Fuzzy full-text search |
-| `ext:!notes query` | Search only notes/highlights |
+| `` ` @shortcut`` | Open saved page |
+| `` ` #tag``  | Search by tag |
+| `` ` &task``  | Show collection/task |
+| `` ` !notes query``  | Search only notes/highlights |
+| `` ` query``  | Fuzzy full-text search |
 
 ---
 

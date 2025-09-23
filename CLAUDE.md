@@ -24,11 +24,11 @@ interface.
 
 ### 2. 🔍 Retrieving
 - **Omnibox search**
-  - `ext:@shortcut` → open saved page
-  - `ext:#tag` → filter by tag
-  - `ext:&task` → show task group
-  - `ext:!notes query` → search within notes
-  - `ext:query` → fuzzy search
+  - `` ` @shortcut`` → open saved page
+  - `` ` #tag`` → filter by tag
+  - `` ` &task``  → show task group
+  - `` ` !!query``  → search within notes
+  - `` ` query``  → fuzzy search
 - Autosuggestion includes:
   - Favicon, title, tags, shortcut, date, collection
 - Fuzzy match logic (e.g. `@mlblog` matches `@ml_blog`, `@mlblg`)
@@ -48,7 +48,7 @@ interface.
 - Right-click highlighted text → "Save Highlight to Task"
 - Optionally add comment, tags, task
 - Stored under `NoteEntry`
-- Search via `ext:!notes ...`
+- Search via `` ` !! ...``
 - Displayed in panel under 📝 marker
 - Lightweight: no injected UI or DOM anchors
 
@@ -58,11 +58,11 @@ interface.
 
 | Pattern | Meaning |
 |---------|---------|
-| `ext:@shortcut` | Open saved page |
-| `ext:#tag` | Search by tag |
-| `ext:&task` | Show collection/task |
-| `ext:query` | Fuzzy full-text search |
-| `ext:!notes query` | Search only notes/highlights |
+| `` ` @shortcut`` | Open saved page |
+| `` ` #tag``  | Search by tag |
+| `` ` &task``  | Show collection/task |
+| `` ` !! query``  | Search only notes/highlights |
+| `` ` query``  | Fuzzy full-text search |
 
 ---
 

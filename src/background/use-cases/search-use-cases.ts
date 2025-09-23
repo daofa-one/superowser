@@ -161,9 +161,39 @@ export class SearchUseCases {
       return { type: 'task-activate', results, task: activeTask }
     }
 
-    // !notes query - search within notes
-    if (trimmed.startsWith('!notes ')) {
-      const query = trimmed.slice(7)
+    // !notes query or !!query - search within notes
+    if (trimmed.startsWith('!!') || trimmed.startsWith('!notes ')) {
+      let query: string
+      if (trimmed.startsWith('!!')) {
+        query = trimmed.slice(2).trim()
+      } else {
+        query = trimmed.slice(7) // '!notes '
+      }
+
+      // Check if this is a specific note selection (contains #noteId)
+      const noteIdMatch = query.match(/^(.+)#([^#]+)$/)
+      if (noteIdMatch) {
+        const [, searchQuery, noteId] = noteIdMatch
+        // Return the specific note as a single result
+        const note = await this.noteService.getById(noteId)
+        if (note) {
+          return {
+            type: 'search',
+            results: [{
+              type: 'note' as const,
+              id: note.id,
+              title: note.content.slice(0, 50) + '...',
+              snippet: note.comment || '',
+              score: 1,
+              tags: note.tags,
+              tasks: note.tasks
+            }]
+          }
+        }
+        // Fall back to search if note not found
+        query = searchQuery
+      }
+
       const notes = await this.noteService.search(query)
       const results = notes.map(note => ({
         type: 'note' as const,
@@ -254,13 +284,15 @@ export class SearchUseCases {
     tags: Array<{ tag: string; pages: any[] }>
     tasks: string[]
     pages: Array<{ page: any; score: number }>
+    notes: Array<{ note: any; score: number }>
   }> {
     const query = partialQuery.toLowerCase()
 
-    // Get all pages and extract unique values
-    const [pages, tasks] = await Promise.all([
+    // Get all pages, tasks, and notes and extract unique values
+    const [pages, tasks, allNotes] = await Promise.all([
       this.pageService.getAll(1000), // Get a large sample
-      this.taskService.getAll()
+      this.taskService.getAll(),
+      this.noteService.search('') // Get all notes using empty search
     ])
 
     const lowerQuery = query.toLowerCase()
@@ -339,6 +371,38 @@ export class SearchUseCases {
       .sort((a, b) => b.score - a.score)
       .slice(0, 10)
 
+    // Search notes
+    const noteMatches = allNotes
+      .map(note => {
+        if (!lowerQuery) {
+          return { note, score: 1 }
+        }
+
+        const content = (note.content || '').toLowerCase()
+        const comment = (note.comment || '').toLowerCase()
+        const tags = note.tags.map((tag: string) => tag.toLowerCase())
+
+        const contentMatch = content.includes(lowerQuery)
+        const commentMatch = comment.includes(lowerQuery)
+        const tagMatches = tags.filter(tag => tag.includes(lowerQuery)).length
+
+        if (!contentMatch && !commentMatch && tagMatches === 0) {
+          return null
+        }
+
+        let score = 1
+        if (content.startsWith(lowerQuery)) score += 2
+        if (contentMatch) score += 1
+        if (comment.startsWith(lowerQuery)) score += 1.5
+        if (commentMatch) score += 0.5
+        score += tagMatches * 0.2
+
+        return { note, score }
+      })
+      .filter((match): match is { note: any; score: number } => match !== null)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+
     // Group pages by tags and get unique tags with their pages
     const tagGroups = new Map<string, any[]>();
     pages.forEach(page => {
@@ -401,7 +465,8 @@ export class SearchUseCases {
       shortcuts,
       tags,
       tasks: taskNames,
-      pages: pageMatches
+      pages: pageMatches,
+      notes: noteMatches
     }
   }
 

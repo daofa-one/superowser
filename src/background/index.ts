@@ -162,12 +162,54 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                     content: `&${task}`,
                     description: `<match>&amp;${escapeForXML(task)}</match> - <dim>Show task</dim>`
                 }));
-            } else if (trimmed.startsWith('!notes ')) {
-                // Note search suggestions - could add note-specific suggestions here
-                omniboxSuggestions = [{
-                    content: trimmed,
-                    description: `Search notes for: ${trimmed.slice(7)}`
-                }];
+            } else if (trimmed.startsWith('!notes ') || trimmed.startsWith('!!')) {
+                // Note search suggestions with actual search results
+                const noteQuery = trimmed.startsWith('!!') ? trimmed.slice(2).trim() : trimmed.slice(7);
+                if (noteQuery.trim()) {
+                    try {
+                        // Also try searching for all notes by using an empty search
+                        const allNotesCheck = await container.noteService.search('');
+
+                        const notes = await container.noteService.search(noteQuery);
+
+                        if (notes.length > 0) {
+                            omniboxSuggestions = notes.slice(0, 6).map((note) => {
+                                const contentPreview = note.content.slice(0, 80);
+                                const safeContent = escapeForXML(contentPreview);
+                                const safeComment = note.comment ? escapeForXML(note.comment.slice(0, 50)) : '';
+                                const tagInfo = note.tags.length > 0 ? ` | ${note.tags.slice(0, 2).join(', ')}` : '';
+                                const commentInfo = safeComment ? ` - ${safeComment}` : '';
+
+                                const prefix = trimmed.startsWith('!!') ? '!!' : '!notes ';
+                                return {
+                                    content: `${prefix}${noteQuery}#${note.id}`,
+                                    description: `📝 <match>${safeContent}${contentPreview.length > 80 ? '...' : ''}</match>${commentInfo}<dim>${tagInfo}</dim>`
+                                };
+                            });
+                        } else {
+                            const message = allNotesCheck.length === 0
+                                ? `📝 No notes exist yet. Create notes by adding them from the side panel.`
+                                : `📝 No notes found for "${noteQuery}"`;
+                            const prefix = trimmed.startsWith('!!') ? '!!' : '!notes ';
+                            omniboxSuggestions = [{
+                                content: `${prefix}${noteQuery}`,
+                                description: message
+                            }];
+                        }
+                    } catch (error) {
+                        const prefix = trimmed.startsWith('!!') ? '!!' : '!notes ';
+                        omniboxSuggestions = [{
+                            content: `${prefix}${noteQuery}`,
+                            description: `📝 Error searching notes`
+                        }];
+                    }
+                } else {
+                    const displayQuery = trimmed.startsWith('!!') ? trimmed.slice(2).trim() : trimmed.slice(7);
+                    omniboxSuggestions = [{
+                        content: trimmed,
+                        description: `Search notes for: ${displayQuery}`
+                    }];
+                }
             } else {
                 // General suggestions - show all types with rich info
                 const suggestions = await container.searchUseCases.getSearchSuggestions(trimmed);
@@ -220,12 +262,26 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                     description: `<match>&amp;${escapeForXML(task)}</match> - <dim>Show task</dim>`
                 }));
 
+                const noteSuggestions = suggestions.notes.map(({ note }) => {
+                    const contentPreview = note.content.slice(0, 60);
+                    const safeContent = escapeForXML(contentPreview);
+                    const safeComment = note.comment ? escapeForXML(note.comment.slice(0, 40)) : '';
+                    const tagInfo = note.tags.length > 0 ? ` | ${note.tags.slice(0, 2).join(', ')}` : '';
+                    const commentInfo = safeComment ? ` - ${safeComment}` : '';
+
+                    return {
+                        content: `!notes ${trimmed}#${note.id}`,
+                        description: `📝 <match>${safeContent}${contentPreview.length > 60 ? '...' : ''}</match>${commentInfo}<dim>${tagInfo}</dim>`
+                    };
+                });
+
                 const interleaved: chrome.omnibox.SuggestResult[] = [];
                 const queues: chrome.omnibox.SuggestResult[][] = [
                     shortcutSuggestions,
                     pageSuggestions,
                     tagSuggestions,
-                    taskSuggestions
+                    taskSuggestions,
+                    noteSuggestions
                 ];
 
                 const pushNext = (queue: chrome.omnibox.SuggestResult[]) => {
@@ -243,7 +299,8 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                     ...shortcutSuggestions,
                     ...pageSuggestions,
                     ...tagSuggestions,
-                    ...taskSuggestions
+                    ...taskSuggestions,
+                    ...noteSuggestions
                 ];
                 while (interleaved.length < 6 && remaining.length) {
                     interleaved.push(remaining.shift()!);
@@ -282,13 +339,40 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
             if (result.results && result.results.length > 0) {
                 if (result.results.length === 1) {
                     // If only one result, open it directly
-                    const pageResult = result.results[0];
-                    if (pageResult.type === 'page') {
+                    const singleResult = result.results[0];
+                    if (singleResult.type === 'page') {
                         // Get the full page data
-                        const page = await container.pageService.getById(pageResult.id);
+                        const page = await container.pageService.getById(singleResult.id);
                         if (page) {
                             await focusOrOpenUrl(page.url);
                         }
+                    } else if (singleResult.type === 'note') {
+                        // For note results, get the associated page if it exists
+                        const note = await container.noteService.getById(singleResult.id);
+                        if (note && note.pageId) {
+                            const page = await container.pageService.getById(note.pageId);
+                            if (page) {
+                                await focusOrOpenUrl(page.url);
+                                return; // Exit early since we opened the page
+                            }
+                        }
+                        // If no page associated with note, show in side panel
+                        const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                        if (currentTab && currentTab.id) {
+                            try {
+                                await chrome.sidePanel.open({ tabId: currentTab.id });
+                            } catch (openError) {
+                                console.warn('Failed to auto-open side panel for note result:', openError);
+                            }
+                            sendRuntimeMessageSafe({
+                                type: 'OMNIBOX_RESULTS',
+                                data: {
+                                    query: text,
+                                    results: [singleResult]
+                                }
+                            });
+                        }
+                        return; // Exit early to avoid the multiple results handling
                     }
                 } else {
                     // Multiple results - open side panel to show them

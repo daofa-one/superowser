@@ -28,7 +28,7 @@ To solve the common pain of tab overload, forgotten context, and fragmented refe
 - Capture multiple tabs into a collection
 - Right-click to save highlights as notes
 - Omnibox search:
-  - `ext:@shortcut`, `ext:#tag`, `ext:&task`, `ext:query`, `ext:!notes`
+  - `` ` @shortcut``, `` ` #tag``, `` ` &task``, `` ` query``, `` ` !notes``
 - Fuzzy matching (e.g. `mlblog` ≈ `ml_blog`)
 - Side panel as primary UI
   - Current page info

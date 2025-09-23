@@ -726,7 +726,7 @@ onUnmounted(() => {
             #
           </button>
           <button class="btn btn-icon" title="Add note" @click="toggleNoteForm">
-            !
+            !!
           </button>
           <button class="btn btn-icon" title="Copy URL" @click="copyUrl">
             📋
@@ -867,8 +867,8 @@ onUnmounted(() => {
             <div class="association-row">
               <label class="association-toggle">
                 <input
-                  type="checkbox"
                   v-model="includePageAssociation"
+                  type="checkbox"
                 />
                 <span>Include current page</span>
               </label>
