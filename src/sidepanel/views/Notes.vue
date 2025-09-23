@@ -32,6 +32,35 @@ const normalizeTask = (task: string): string | null => {
   return trimmed.startsWith('&') ? trimmed.slice(1) : trimmed
 }
 
+const buildQueryTokens = (input: string): string[] => {
+  const trimmed = input.trim().toLowerCase()
+  if (!trimmed) {
+    return []
+  }
+
+  const tokens = new Set<string>()
+
+  // Add full query and individual words
+  tokens.add(trimmed)
+  trimmed.split(/\s+/).forEach(part => tokens.add(part))
+
+  const normalizedTag = normalizeTag(input)
+  if (normalizedTag) {
+    tokens.add(normalizedTag.toLowerCase())
+  }
+
+  const normalizedTask = normalizeTask(input)
+  if (normalizedTask) {
+    tokens.add(normalizedTask.toLowerCase())
+  }
+
+  if (trimmed.startsWith('@')) {
+    tokens.add(trimmed.slice(1))
+  }
+
+  return Array.from(tokens).filter(Boolean)
+}
+
 const toTagList = (value: unknown): string[] => {
   const rawValues = Array.isArray(value)
     ? value
@@ -68,21 +97,38 @@ const filteredNotes = computed(() => {
 
   // Search filter
   if (searchQuery.value.trim()) {
-    const query = searchQuery.value.toLowerCase()
+    const tokens = buildQueryTokens(searchQuery.value)
     result = result.filter(note => {
-      const noteTasks = toTaskList(note.tasks)
-      const noteTags = toTagList(note.tags)
-      const matchesContent = note.content.toLowerCase().includes(query) ||
-        (note.comment && note.comment.toLowerCase().includes(query)) ||
-        noteTasks.some(task => task.toLowerCase().includes(query)) ||
-        noteTags.some(tag => tag.toLowerCase().includes(query))
+      if (tokens.length === 0) {
+        return true
+      }
+
+      const noteContent = note.content.toLowerCase()
+      const noteComment = note.comment ? note.comment.toLowerCase() : ''
+      const noteTasks = toTaskList(note.tasks).map(task => task.toLowerCase())
+      const noteTags = toTagList(note.tags).map(tag => tag.toLowerCase())
+
+      const matchesContent = tokens.some(token =>
+        noteContent.includes(token) ||
+        (noteComment && noteComment.includes(token))
+      )
+
+      const matchesTasks = tokens.some(token =>
+        noteTasks.some(task => task.includes(token))
+      )
+
+      const matchesNoteTags = tokens.some(token =>
+        noteTags.some(tag => tag.includes(token))
+      )
 
       // Also search in associated page tags
       const page = note.pageId ? pages.value[note.pageId] : null
-      const pageTags = toTagList(page?.tags)
-      const matchesPageTags = pageTags.some(tag => tag.toLowerCase().includes(query))
+      const pageTags = toTagList(page?.tags).map(tag => tag.toLowerCase())
+      const matchesPageTags = tokens.some(token =>
+        pageTags.some(tag => tag.includes(token))
+      )
 
-      return matchesContent || matchesPageTags
+      return matchesContent || matchesTasks || matchesNoteTags || matchesPageTags
     })
   }
 

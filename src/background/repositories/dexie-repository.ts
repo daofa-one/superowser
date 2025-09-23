@@ -260,7 +260,15 @@ export class DexieNoteService implements INoteService {
   }
 
   async search(query: string): Promise<NoteEntry[]> {
-    const searchTerms = query.toLowerCase().split(' ')
+    if (!query.trim()) {
+      return this.getAll()
+    }
+
+    const searchTerms = query.toLowerCase().split(' ').filter(term => term.length > 0)
+    if (searchTerms.length === 0) {
+      return this.getAll()
+    }
+
     return await db.notes
       .filter(note =>
         searchTerms.every(term =>

@@ -113,8 +113,9 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
             if (trimmed.startsWith('@')) {
                 // Shortcut suggestions with page info
                 const query = trimmed.slice(1);
-                const suggestions = await container.searchUseCases.getSearchSuggestions(query);
-                omniboxSuggestions = suggestions.shortcuts.map(({ shortcut, page }) => {
+                try {
+                    const suggestions = await container.searchUseCases.getSearchSuggestions(query);
+                    omniboxSuggestions = (suggestions.shortcuts || []).map(({ shortcut, page }) => {
                     let hostname = '';
                     try {
                         hostname = new URL(page.url).hostname;
@@ -129,13 +130,22 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                         description: `<match>@${safeShortcut}</match> - ${safeTitle}${safeHostname ? ` | <dim>${safeHostname}</dim>` : ''}`
                     };
                 });
+                } catch (shortcutError) {
+                    console.error('Error getting shortcut suggestions:', shortcutError);
+                    omniboxSuggestions = [{
+                        content: trimmed,
+                        description: 'Error loading shortcut suggestions'
+                    }];
+                }
             } else if (trimmed.startsWith('#')) {
                 // Tag suggestions with page count and example
                 const query = trimmed.slice(1);
-                const suggestions = await container.searchUseCases.getSearchSuggestions(query);
-                omniboxSuggestions = suggestions.tags.map(({ tag, pages }) => {
-                    const pageCount = pages.length;
-                    const examplePage = pages[0];
+                try {
+                    const suggestions = await container.searchUseCases.getSearchSuggestions(query);
+                    const tagSuggestions = (suggestions.tags || []).map(({ tag, pages }) => {
+                    const tagPages = Array.isArray(pages) ? pages : [];
+                    const pageCount = tagPages.length;
+                    const examplePage = pageCount > 0 ? tagPages[0] : null;
                     const countText = pageCount === 1 ? '1 page' : `${pageCount} pages`;
                     let exampleHostname = '';
                     if (examplePage) {
@@ -154,30 +164,70 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                         description: `<match>#${safeTag}</match> - <dim>${safeCount}</dim>${descriptionExtras}`
                     };
                 });
+
+                const typedTag = trimmed.slice(1);
+                if (typedTag) {
+                    const normalizedTyped = typedTag.toLowerCase();
+                    const exactExists = tagSuggestions.some(entry => entry.content.toLowerCase() === `#${normalizedTyped}`);
+                    const safeTyped = escapeForXML(typedTag);
+
+                    if (!exactExists) {
+                        const hasResults = tagSuggestions.length > 0;
+                        tagSuggestions.unshift({
+                            content: `#${typedTag}`,
+                            description: `<match>#${safeTyped}</match> - <dim>${hasResults ? 'Search tag' : 'No tagged pages found'}</dim>`
+                        });
+                    }
+                }
+
+                omniboxSuggestions = tagSuggestions.length > 0 ? tagSuggestions : [{
+                    content: `#${trimmed.slice(1)}`,
+                    description: `<match>#${escapeForXML(trimmed.slice(1))}</match> - <dim>No tagged pages found</dim>`
+                }];
+                } catch (tagError) {
+                    console.error('Error getting tag suggestions:', tagError);
+                    omniboxSuggestions = [{
+                        content: trimmed,
+                        description: 'Error loading tag suggestions'
+                    }];
+                }
             } else if (trimmed.startsWith('&')) {
                 // Task suggestions
                 const query = trimmed.slice(1);
-                const suggestions = await container.searchUseCases.getSearchSuggestions(query);
-                omniboxSuggestions = suggestions.tasks.map(task => ({
+                try {
+                    const suggestions = await container.searchUseCases.getSearchSuggestions(query);
+                    omniboxSuggestions = (suggestions.tasks || []).map(task => ({
                     content: `&${task}`,
                     description: `<match>&amp;${escapeForXML(task)}</match> - <dim>Show task</dim>`
                 }));
+                } catch (taskError) {
+                    console.error('Error getting task suggestions:', taskError);
+                    omniboxSuggestions = [{
+                        content: trimmed,
+                        description: 'Error loading task suggestions'
+                    }];
+                }
             } else if (trimmed.startsWith('!notes ') || trimmed.startsWith('!!')) {
                 // Note search suggestions with actual search results
                 const noteQuery = trimmed.startsWith('!!') ? trimmed.slice(2).trim() : trimmed.slice(7);
                 if (noteQuery.trim()) {
                     try {
-                        // Also try searching for all notes by using an empty search
-                        const allNotesCheck = await container.noteService.search('');
+                        // Also try searching for all notes by using getAll
+                        const allNotesRaw = await container.noteService.getAll(1000);
+                        const allNotesCheck = Array.isArray(allNotesRaw) ? allNotesRaw : [];
+                        console.log('Debug: Notes search - total notes:', allNotesCheck.length, 'query:', noteQuery);
 
-                        const notes = await container.noteService.search(noteQuery);
+                        const notesRaw = await container.noteService.search(noteQuery);
+                        const notes = Array.isArray(notesRaw) ? notesRaw : [];
+                        console.log('Debug: Notes search results:', notes.length);
 
                         if (notes.length > 0) {
                             omniboxSuggestions = notes.slice(0, 6).map((note) => {
+                                const noteTags = Array.isArray(note.tags) ? note.tags : [];
                                 const contentPreview = note.content.slice(0, 80);
                                 const safeContent = escapeForXML(contentPreview);
                                 const safeComment = note.comment ? escapeForXML(note.comment.slice(0, 50)) : '';
-                                const tagInfo = note.tags.length > 0 ? ` | ${note.tags.slice(0, 2).join(', ')}` : '';
+                                const tagInfo = noteTags.length > 0 ? ` | ${noteTags.slice(0, 2).join(', ')}` : '';
                                 const commentInfo = safeComment ? ` - ${safeComment}` : '';
 
                                 const prefix = trimmed.startsWith('!!') ? '!!' : '!notes ';
@@ -197,6 +247,7 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                             }];
                         }
                     } catch (error) {
+                        console.error('Error searching notes:', error);
                         const prefix = trimmed.startsWith('!!') ? '!!' : '!notes ';
                         omniboxSuggestions = [{
                             content: `${prefix}${noteQuery}`,
@@ -212,25 +263,54 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                 }
             } else {
                 // General suggestions - show all types with rich info
-                const suggestions = await container.searchUseCases.getSearchSuggestions(trimmed);
+                try {
+                    const suggestions = await container.searchUseCases.getSearchSuggestions(trimmed);
 
-                const shortcutSuggestions = suggestions.shortcuts.map(({ shortcut, page }) => {
-                    let hostname = '';
-                    try {
-                        hostname = new URL(page.url).hostname;
-                    } catch {
-                        hostname = page.url.split('/')[2] || page.url;
+                    const shortcutSuggestions: chrome.omnibox.SuggestResult[] = [];
+                    const seenShortcuts = new Set<string>();
+
+                    const typedShortcut = trimmed.startsWith('@') ? trimmed.slice(1) : '';
+                    if (typedShortcut) {
+                        const normalizedTyped = typedShortcut.toLowerCase();
+                        const safeTypedShortcut = escapeForXML(typedShortcut);
+                        const typedKey = `@${normalizedTyped}`;
+                        shortcutSuggestions.push({
+                            content: `@${typedShortcut}`,
+                            description: `<match>@${safeTypedShortcut}</match> - <dim>Open shortcut</dim>`
+                        });
+                        seenShortcuts.add(typedKey);
                     }
-                    const safeShortcut = escapeForXML(shortcut);
-                    const safeTitle = escapeForXML(page.title ?? '');
-                    const safeHostname = hostname ? escapeForXML(hostname) : '';
-                    return {
-                        content: `@${shortcut}`,
-                        description: `<match>@${safeShortcut}</match> - ${safeTitle}${safeHostname ? ` | <dim>${safeHostname}</dim>` : ''}`
-                    };
-                });
 
-                const pageSuggestions = suggestions.pages.map(({ page }) => {
+                    (suggestions.shortcuts || []).forEach(({ shortcut, page }) => {
+                        const normalizedShortcut = shortcut?.trim();
+                        if (!normalizedShortcut) {
+                            return;
+                        }
+
+                        const shortcutKey = `@${normalizedShortcut.toLowerCase()}`;
+                        if (seenShortcuts.has(shortcutKey)) {
+                            return;
+                        }
+
+                        let hostname = '';
+                        try {
+                            hostname = new URL(page.url).hostname;
+                        } catch {
+                            hostname = page.url.split('/')[2] || page.url;
+                        }
+                        const safeShortcut = escapeForXML(normalizedShortcut);
+                        const safeTitle = escapeForXML(page.title ?? '');
+                        const safeHostname = hostname ? escapeForXML(hostname) : '';
+
+                        shortcutSuggestions.push({
+                            content: `@${normalizedShortcut}`,
+                            description: `<match>@${safeShortcut}</match> - ${safeTitle}${safeHostname ? ` | <dim>${safeHostname}</dim>` : ''}`
+                        });
+
+                        seenShortcuts.add(shortcutKey);
+                    });
+
+                const pageSuggestions = (suggestions.pages || []).map(({ page }) => {
                     let hostname = '';
                     try {
                         hostname = new URL(page.url).hostname;
@@ -246,27 +326,57 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                     };
                 });
 
-                const tagSuggestions = suggestions.tags.map(({ tag, pages }) => {
-                    const pageCount = pages.length;
+                const tagSuggestions: chrome.omnibox.SuggestResult[] = [];
+                const seenTags = new Set<string>();
+
+                const typedTag = trimmed.startsWith('#') ? trimmed.slice(1) : '';
+                if (typedTag) {
+                    const normalizedTyped = typedTag.toLowerCase();
+                    const safeTypedTag = escapeForXML(typedTag);
+                    const typedKey = `#${normalizedTyped}`;
+                    tagSuggestions.push({
+                        content: `#${typedTag}`,
+                        description: `<match>#${safeTypedTag}</match> - <dim>Search tag</dim>`
+                    });
+                    seenTags.add(typedKey);
+                }
+
+                (suggestions.tags || []).forEach(({ tag, pages }) => {
+                    const normalizedTag = (tag ?? '').trim();
+                    if (!normalizedTag) {
+                        return;
+                    }
+
+                    const tagKey = `#${normalizedTag.toLowerCase()}`;
+                    if (seenTags.has(tagKey)) {
+                        return;
+                    }
+
+                    const tagPages = Array.isArray(pages) ? pages : [];
+                    const pageCount = tagPages.length;
                     const countText = pageCount === 1 ? '1 page' : `${pageCount} pages`;
-                    const safeTag = escapeForXML(tag);
+                    const safeTag = escapeForXML(normalizedTag);
                     const safeCount = escapeForXML(countText);
-                    return {
-                        content: `#${tag}`,
+
+                    tagSuggestions.push({
+                        content: `#${normalizedTag}`,
                         description: `<match>#${safeTag}</match> - <dim>${safeCount}</dim>`
-                    };
+                    });
+
+                    seenTags.add(tagKey);
                 });
 
-                const taskSuggestions = suggestions.tasks.map(task => ({
+                const taskSuggestions = (suggestions.tasks || []).map(task => ({
                     content: `&${task}`,
                     description: `<match>&amp;${escapeForXML(task)}</match> - <dim>Show task</dim>`
                 }));
 
-                const noteSuggestions = suggestions.notes.map(({ note }) => {
-                    const contentPreview = note.content.slice(0, 60);
+                const noteSuggestions = (suggestions.notes || []).map(({ note }) => {
+                    const contentPreview = (note.content || '').slice(0, 60);
                     const safeContent = escapeForXML(contentPreview);
                     const safeComment = note.comment ? escapeForXML(note.comment.slice(0, 40)) : '';
-                    const tagInfo = note.tags.length > 0 ? ` | ${note.tags.slice(0, 2).join(', ')}` : '';
+                    const noteTags = Array.isArray(note.tags) ? note.tags : [];
+                    const tagInfo = noteTags.length > 0 ? ` | ${noteTags.slice(0, 2).join(', ')}` : '';
                     const commentInfo = safeComment ? ` - ${safeComment}` : '';
 
                     return {
@@ -307,6 +417,13 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
                 }
 
                 omniboxSuggestions = interleaved;
+                } catch (suggestionError) {
+                    console.error('Error getting search suggestions:', suggestionError);
+                    omniboxSuggestions = [{
+                        content: trimmed,
+                        description: 'Error loading suggestions'
+                    }];
+                }
             }
 
             suggest(omniboxSuggestions.slice(0, 6)); // Limit to 6 suggestions

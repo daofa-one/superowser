@@ -20,7 +20,7 @@ export class NotesUseCases {
    * Get all notes in the system
    */
   async getAllNotes(): Promise<NoteEntry[]> {
-    return this.noteService.search('')
+    return this.noteService.getAll()
   }
 
   /**
