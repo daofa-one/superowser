@@ -36,6 +36,10 @@ const pageNotes = ref<NoteEntry[]>([])
 const includePageAssociation = ref(true)
 const selectedNoteTasks = ref<string[]>([])
 const noteTaskInput = ref('')
+const showNoteMenu = ref(false)
+const selectedNoteId = ref<string | null>(null)
+const selectedNote = ref<NoteEntry | null>(null)
+const noteMenuPosition = ref({ x: 0, y: 0 })
 
 const formatDateTime = (value?: Date | string) => {
   if (!value) return ''
@@ -586,6 +590,132 @@ const cancelSave = () => {
   selectedTasks.value = []
 }
 
+const showNoteContextMenu = (event: MouseEvent, noteId: string) => {
+  event.preventDefault()
+  event.stopPropagation()
+
+  // Find the full note object
+  const note = pageNotes.value.find(n => n.id === noteId)
+  if (!note) return
+
+  selectedNoteId.value = noteId
+  selectedNote.value = note
+
+  // Position relative to the viewport
+  const x = Math.min(event.clientX, window.innerWidth - 180) // Prevent overflow
+  const y = Math.min(event.clientY, window.innerHeight - 100) // Prevent overflow
+
+  noteMenuPosition.value = { x, y }
+  showNoteMenu.value = true
+}
+
+const hideNoteMenu = () => {
+  showNoteMenu.value = false
+  selectedNoteId.value = null
+  selectedNote.value = null
+}
+
+const disassociateNoteFromPage = async () => {
+  if (!selectedNoteId.value) return
+
+  try {
+    const response = await store.sendMessage({
+      type: 'UPDATE_NOTE',
+      data: {
+        id: selectedNoteId.value,
+        pageId: null // Remove page association
+      }
+    })
+
+    if (response?.type === 'SUCCESS') {
+      store.addNotification({
+        type: 'success',
+        message: 'Note disassociated from page'
+      })
+      await loadCurrentPageInfo()
+    } else {
+      throw new Error('Failed to disassociate note')
+    }
+  } catch (error) {
+    console.error('Failed to disassociate note:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to disassociate note'
+    })
+  } finally {
+    hideNoteMenu()
+  }
+}
+
+const deleteNote = async () => {
+  if (!selectedNoteId.value) return
+
+  if (!confirm('Are you sure you want to delete this note? This action cannot be undone.')) {
+    hideNoteMenu()
+    return
+  }
+
+  try {
+    const response = await store.sendMessage({
+      type: 'DELETE_NOTE',
+      data: { id: selectedNoteId.value }
+    })
+
+    if (response?.type === 'SUCCESS') {
+      store.addNotification({
+        type: 'success',
+        message: 'Note deleted'
+      })
+      await loadCurrentPageInfo()
+    } else {
+      throw new Error('Failed to delete note')
+    }
+  } catch (error) {
+    console.error('Failed to delete note:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to delete note'
+    })
+  } finally {
+    hideNoteMenu()
+  }
+}
+
+const removeNoteFromTask = async (taskName: string) => {
+  if (!selectedNoteId.value || !selectedNote.value) return
+
+  try {
+    // Remove the specific task from the note's tasks array
+    const updatedTasks = selectedNote.value.tasks.filter(task => task !== taskName)
+
+    const response = await store.sendMessage({
+      type: 'UPDATE_NOTE',
+      data: {
+        id: selectedNoteId.value,
+        tasks: updatedTasks
+      }
+    })
+
+    if (response?.type === 'SUCCESS') {
+      store.addNotification({
+        type: 'success',
+        message: `Note removed from task "${taskName}"`
+      })
+      await loadCurrentPageInfo()
+    } else {
+      throw new Error('Failed to remove note from task')
+    }
+  } catch (error) {
+    console.error('Failed to remove note from task:', error)
+    store.addNotification({
+      type: 'error',
+      message: `Failed to remove note from task "${taskName}"`
+    })
+  } finally {
+    hideNoteMenu()
+  }
+}
+
 // Listen for tab changes from background script
 const onTabChange = (message: { type?: string; path?: string }, _sender: unknown, _sendResponse: unknown) => {
   if (message.type === 'TAB_CHANGED' || message.type === 'TAB_UPDATED') {
@@ -612,6 +742,9 @@ onMounted(() => {
 
   // Listen for tab changes
   chrome.runtime.onMessage.addListener(onTabChange)
+
+  // Hide note menu when clicking outside
+  document.addEventListener('click', hideNoteMenu)
 })
 
 // Cleanup listener when component unmounts
@@ -619,6 +752,7 @@ onUnmounted(() => {
   if (chrome.runtime.onMessage.hasListener(onTabChange)) {
     chrome.runtime.onMessage.removeListener(onTabChange)
   }
+  document.removeEventListener('click', hideNoteMenu)
 })
 </script>
 
@@ -915,29 +1049,6 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Saved Notes Section -->
-      <div v-if="pageNotes.length > 0" class="notes-section">
-        <div class="notes-header">
-          <h4>Saved Notes</h4>
-          <span class="notes-count">{{ pageNotes.length }}</span>
-        </div>
-        <ul class="notes-list">
-          <li v-for="note in pageNotes" :key="note.id" class="note-item">
-            <p class="note-content">{{ note.content }}</p>
-            <p v-if="note.comment" class="note-comment">💬 {{ note.comment }}</p>
-            <div class="note-meta">
-              <span class="note-timestamp">{{ formatDateTime(note.createdAt) }}</span>
-              <div class="note-links">
-                <span v-if="note.pageId" class="note-link-badge">📄 Page</span>
-                <div v-if="note.tasks && note.tasks.length" class="note-tasks">
-                  <span v-for="task in note.tasks" :key="task" class="note-task">&{{ task }}</span>
-                </div>
-              </div>
-            </div>
-          </li>
-        </ul>
-      </div>
-
       <!-- Save Page Form Section -->
       <div v-if="showSaveForm" class="save-form-section">
         <div class="form-header">
@@ -1007,6 +1118,73 @@ onUnmounted(() => {
             Cancel
           </button>
         </div>
+      </div>
+
+      <!-- Saved Notes Section -->
+      <div v-if="pageNotes.length > 0" class="notes-section">
+        <div class="notes-header">
+          <h4>Saved Notes</h4>
+          <span class="notes-count">{{ pageNotes.length }}</span>
+        </div>
+        <ul class="notes-list">
+          <li
+            v-for="note in pageNotes"
+            :key="note.id"
+            class="note-item"
+            @contextmenu="showNoteContextMenu($event, note.id)"
+            @click="hideNoteMenu"
+          >
+            <p class="note-content">{{ note.content }}</p>
+            <p v-if="note.comment" class="note-comment">💬 {{ note.comment }}</p>
+            <div class="note-meta">
+              <span class="note-timestamp">{{ formatDateTime(note.createdAt) }}</span>
+              <div class="note-links">
+                <span v-if="note.pageId" class="note-link-badge">📄 Page</span>
+                <div v-if="note.tasks && note.tasks.length" class="note-tasks">
+                  <span v-for="task in note.tasks" :key="task" class="note-task">&{{ task }}</span>
+                </div>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Note Context Menu -->
+      <div
+        v-if="showNoteMenu && selectedNote"
+        class="note-context-menu"
+        :style="{ left: noteMenuPosition.x + 'px', top: noteMenuPosition.y + 'px' }"
+        @click.stop
+      >
+        <!-- Remove from page option (only if note is linked to page) -->
+        <button
+          v-if="selectedNote.pageId"
+          class="menu-item"
+          @click="disassociateNoteFromPage"
+        >
+          🔗 Remove from page
+        </button>
+
+        <!-- Remove from task options (for each task the note is linked to) -->
+        <button
+          v-for="task in selectedNote.tasks"
+          :key="task"
+          class="menu-item"
+          @click="removeNoteFromTask(task)"
+        >
+          📁 Remove from &{{ task }}
+        </button>
+
+        <!-- Separator if there are page/task options -->
+        <div
+          v-if="selectedNote.pageId || selectedNote.tasks.length > 0"
+          class="menu-separator"
+        ></div>
+
+        <!-- Delete note option -->
+        <button class="menu-item menu-item-danger" @click="deleteNote">
+          🗑️ Delete note
+        </button>
       </div>
     </div>
 
@@ -1826,5 +2004,57 @@ onUnmounted(() => {
 
 .empty-message {
   font-size: 14px;
+}
+
+/* Note Context Menu */
+.note-context-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 9999;
+  min-width: 160px;
+  padding: 4px 0;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  color: #333;
+}
+
+.menu-item:hover {
+  background-color: #f5f5f5;
+}
+
+.menu-item-danger {
+  color: #dc3545;
+}
+
+.menu-item-danger:hover {
+  background-color: #fff5f5;
+}
+
+.note-item {
+  cursor: context-menu;
+  transition: background-color 0.2s;
+}
+
+.note-item:hover {
+  background-color: #f8fafc !important;
+}
+
+.menu-separator {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 4px 0;
 }
 </style>

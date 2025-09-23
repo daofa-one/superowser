@@ -595,6 +595,16 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 data = await container.noteService.getByPageId(message.data.pageId);
                 break;
 
+            case 'UPDATE_NOTE':
+                const { id, ...updates } = message.data;
+                data = await container.noteService.update(id, updates);
+                break;
+
+            case 'DELETE_NOTE':
+                await container.noteService.delete(message.data.id);
+                data = { success: true };
+                break;
+
             case 'UPDATE_PAGE':
                 data = await container.pageService.update(message.data.id, message.data.updates);
                 break;
