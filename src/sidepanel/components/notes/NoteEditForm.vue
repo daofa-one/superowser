@@ -23,6 +23,7 @@ const editNoteComment = ref('')
 const editIncludePageAssociation = ref(true)
 const editSelectedNoteTasks = ref<string[]>([])
 const editNoteTaskInput = ref('')
+const associatedPage = ref<{ id: string; title: string; url: string } | null>(null)
 
 // Task management
 const availableTasks = ref<string[]>([])
@@ -36,10 +37,33 @@ onMounted(async () => {
   editIncludePageAssociation.value = !!props.note.pageId
   editSelectedNoteTasks.value = [...(props.note.tasks || [])]
 
+  // Load associated page if exists
+  if (props.note.pageId) {
+    await loadAssociatedPage(props.note.pageId)
+  }
+
   // Load available tasks
   await loadAvailableTasks()
   filterEditTasks()
 })
+
+const loadAssociatedPage = async (pageId: string) => {
+  try {
+    const response = await store.sendMessage({
+      type: 'GET_PAGE',
+      data: { id: pageId }
+    })
+    if (response && response.type === 'SUCCESS' && response.data) {
+      associatedPage.value = {
+        id: response.data.id,
+        title: response.data.title,
+        url: response.data.url
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to load associated page:', error)
+  }
+}
 
 const loadAvailableTasks = async () => {
   try {
@@ -208,13 +232,21 @@ const cancelEdit = () => {
             v-model="editIncludePageAssociation"
             type="checkbox"
           />
-          <span>Include current page</span>
+          <span v-if="associatedPage">Keep page association</span>
+          <span v-else>Include current page</span>
         </label>
-        <span v-if="editIncludePageAssociation" class="association-chip">
+        <span v-if="editIncludePageAssociation && associatedPage" class="association-chip page-chip">
+          <div class="page-info">
+            <div class="page-title">{{ associatedPage.title }}</div>
+            <div class="page-url">{{ associatedPage.url }}</div>
+          </div>
+          <button type="button" @click="editIncludePageAssociation = false">×</button>
+        </span>
+        <span v-else-if="editIncludePageAssociation && !associatedPage" class="association-chip">
           Current page
           <button type="button" @click="editIncludePageAssociation = false">×</button>
         </span>
-        <span v-else class="association-hint">Note will not be linked to the page.</span>
+        <span v-else class="association-hint">Note will not be linked to any page.</span>
       </div>
     </div>
 
@@ -367,6 +399,38 @@ const cancelEdit = () => {
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 12px;
+}
+
+.association-chip.page-chip {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  max-width: 280px;
+}
+
+.page-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-title {
+  font-weight: 500;
+  font-size: 12px;
+  color: #0c4a6e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-url {
+  font-size: 11px;
+  color: #64748b;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
 }
 
 .association-chip button {
