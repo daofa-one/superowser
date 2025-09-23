@@ -52,31 +52,55 @@
 
     <!-- Tasks List -->
     <div v-else-if="!showCreateForm" class="tasks-list">
+      <div class="tasks-toolbar">
+        <input
+          v-model="taskFilter"
+          type="text"
+          class="task-filter-input"
+          placeholder="Filter tasks by name or description"
+        />
+        <button
+          v-if="hasFilter"
+          class="btn-clear"
+          type="button"
+          @click="taskFilter = ''"
+        >
+          Clear
+        </button>
+      </div>
+
       <div v-if="tasks.length === 0" class="empty-state">
         <div class="empty-icon">📋</div>
         <div class="empty-message">No tasks yet</div>
         <div class="empty-hint">Create your first task to get started!</div>
       </div>
+      <div v-else-if="filteredTasks.length === 0" class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <div class="empty-message">No tasks match that filter</div>
+        <div class="empty-hint">Try a different keyword or clear the filter.</div>
+      </div>
 
-      <div v-for="task in tasks" :key="task.id" class="task-card">
-        <div class="task-info">
-          <div class="task-name">{{ task.name }}</div>
-          <div v-if="task.description" class="task-description">
-            {{ task.description }}
+      <div v-else>
+        <div v-for="task in filteredTasks" :key="task.id" class="task-card">
+          <div class="task-info">
+            <div class="task-name">{{ task.name }}</div>
+            <div v-if="task.description" class="task-description">
+              {{ task.description }}
+            </div>
+            <div class="task-stats">
+              <span class="stat-item">{{ task.pageCount || 0 }} pages</span>
+              <span class="stat-item">{{ task.noteCount || 0 }} notes</span>
+              <span v-if="task.isActive" class="active-badge">Active</span>
+            </div>
           </div>
-          <div class="task-stats">
-            <span class="stat-item">{{ task.pageCount || 0 }} pages</span>
-            <span class="stat-item">{{ task.noteCount || 0 }} notes</span>
-            <span v-if="task.isActive" class="active-badge">Active</span>
+          <div class="task-actions">
+            <button class="btn-action btn-primary" title="Set as active task" @click="setActiveTask(task)">
+              ✓
+            </button>
+            <button class="btn-action btn-danger" title="Delete task" @click="deleteTask(task)">
+              🗑️
+            </button>
           </div>
-        </div>
-        <div class="task-actions">
-          <button class="btn-action btn-primary" @click="setActiveTask(task)" title="Set as active task">
-            ✓
-          </button>
-          <button class="btn-action btn-danger" @click="deleteTask(task)" title="Delete task">
-            🗑️
-          </button>
         </div>
       </div>
     </div>
@@ -84,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSidePanelStore } from '../stores/sidepanel-store'
 import type { TaskEntry } from '../../shared/models'
@@ -106,6 +130,8 @@ const isLoading = ref(true)
 const showCreateForm = ref(false)
 const newTaskName = ref('')
 const newTaskDescription = ref('')
+const taskFilter = ref('')
+const hasFilter = computed(() => taskFilter.value.trim().length > 0)
 
 const loadTasks = async () => {
   try {
@@ -130,6 +156,19 @@ const loadTasks = async () => {
     isLoading.value = false
   }
 }
+
+const filteredTasks = computed(() => {
+  const query = taskFilter.value.trim().toLowerCase()
+  if (!query) {
+    return tasks.value
+  }
+
+  return tasks.value.filter(task => {
+    const nameMatch = task.name.toLowerCase().includes(query)
+    const descriptionMatch = task.description?.toLowerCase().includes(query)
+    return nameMatch || !!descriptionMatch
+  })
+})
 
 const onTaskChange = (message: RuntimeMessage) => {
   (async () => {
@@ -452,6 +491,44 @@ const deleteTask = async (task: TaskWithStats) => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.tasks-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.task-filter-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  font-family: inherit;
+}
+
+.task-filter-input:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+  outline: none;
+}
+
+.btn-clear {
+  background: none;
+  border: none;
+  color: #007bff;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.btn-clear:hover {
+  background: rgba(0, 123, 255, 0.1);
 }
 
 .empty-state {

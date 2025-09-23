@@ -11,6 +11,11 @@ interface TaskContentPayload {
   notes: unknown[]
 }
 
+interface TaskWithStats extends TaskEntry {
+  pageCount?: number
+  noteCount?: number
+}
+
 interface RuntimeMessage {
   type?: string
   path?: string
@@ -23,13 +28,13 @@ const currentTask = ref<TaskEntry | null>(null)
 const taskPages = ref<PageEntry[]>([])
 const isLoading = ref(true)
 const showTaskSelector = ref(false)
-const availableTasks = ref<TaskEntry[]>([])
+const availableTasks = ref<TaskWithStats[]>([])
 const isLoadingTasks = ref(false)
 const taskFilter = ref('')
 const selectedTaskName = ref<string | null>(null)
 const isSettingTask = ref(false)
 
-const filteredTasks = computed(() => {
+const filteredTasks = computed<TaskWithStats[]>(() => {
   const query = taskFilter.value.trim().toLowerCase()
   if (!query) {
     return availableTasks.value
@@ -42,7 +47,7 @@ const filteredTasks = computed(() => {
   })
 })
 
-const selectedTask = computed(() => {
+const selectedTask = computed<TaskWithStats | null>(() => {
   if (!selectedTaskName.value) {
     return null
   }
@@ -233,7 +238,7 @@ const loadAvailableTasks = async () => {
 
     const response = await store.sendMessage({
       type: 'GET_TASKS'
-    }) as { type: string; data?: TaskEntry[] }
+    }) as { type: string; data?: TaskWithStats[] }
 
     if (response?.type === 'SUCCESS' && Array.isArray(response.data)) {
       availableTasks.value = response.data.map(task => ({

@@ -40,7 +40,7 @@ const displayUrl = computed(() => {
 })
 
 const hasNotes = computed(() => {
-  return currentPage.value?.noteCount > 0
+  return (currentPage.value?.noteCount ?? 0) > 0
 })
 
 const showInitialLoader = computed(() => isLoading.value && !currentPage.value)
