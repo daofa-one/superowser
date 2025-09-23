@@ -1,10 +1,21 @@
 <template>
   <div class="task-manager">
+    <!-- Header -->
     <div class="tasks-header">
-      <h2>Tasks</h2>
-      <button v-if="!showCreateForm" class="btn-primary" @click="createNewTask">
-        New Task
-      </button>
+      <h2 class="tasks-title">📋 Tasks</h2>
+      <div class="tasks-header-actions">
+        <div class="tasks-stats">
+          <span v-if="hasFilter && filteredTasks.length !== tasks.length">
+            {{ filteredTasks.length }} of {{ tasks.length }} tasks
+          </span>
+          <span v-else>
+            {{ tasks.length }} tasks
+          </span>
+        </div>
+        <button v-if="!showCreateForm" class="btn btn-primary btn-small" @click="createNewTask">
+          New Task
+        </button>
+      </div>
     </div>
 
     <!-- Create Task Form -->
@@ -34,10 +45,10 @@
           ></textarea>
         </div>
         <div class="form-actions">
-          <button type="button" class="btn-secondary" @click="cancelCreate">
+          <button type="button" class="btn btn-secondary" @click="cancelCreate">
             Cancel
           </button>
-          <button type="submit" class="btn-primary">
+          <button type="submit" class="btn btn-primary">
             Create Task
           </button>
         </div>
@@ -61,7 +72,7 @@
         />
         <button
           v-if="hasFilter"
-          class="btn-clear"
+          class="btn btn-secondary btn-small"
           type="button"
           @click="taskFilter = ''"
         >
@@ -80,7 +91,7 @@
         <div class="empty-hint">Try a different keyword or clear the filter.</div>
       </div>
 
-      <div v-else>
+      <div v-else class="tasks-content">
         <div v-for="task in filteredTasks" :key="task.id" class="task-card">
           <div class="task-info">
             <div class="task-name">{{ task.name }}</div>
@@ -307,32 +318,43 @@ const deleteTask = async (task: TaskWithStats) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
-.tasks-header h2 {
+.tasks-title {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
-  color: #333;
+  color: #1f2937;
+}
+
+.tasks-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tasks-stats {
+  font-size: 13px;
+  color: #64748b;
 }
 
 /* Loading State */
 .loading-state {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 40px 20px;
   justify-content: center;
-  color: #666;
-  font-size: 14px;
+  gap: 12px;
+  padding: 48px;
+  color: #64748b;
 }
 
 .loading-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #f0f0f0;
-  border-left: 2px solid #007bff;
+  width: 24px;
+  height: 24px;
+  border: 2px solid #e2e8f0;
+  border-top: 2px solid #3b82f6;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -344,11 +366,11 @@ const deleteTask = async (task: TaskWithStats) => {
 /* Create Form */
 .create-form {
   background: white;
-  border: 1px solid #e0e0e0;
-  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
   padding: 16px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .form-header {
@@ -362,14 +384,14 @@ const deleteTask = async (task: TaskWithStats) => {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: #1f2937;
 }
 
 .btn-close {
   background: none;
   border: none;
   font-size: 18px;
-  color: #666;
+  color: #64748b;
   cursor: pointer;
   padding: 4px;
   line-height: 1;
@@ -377,7 +399,7 @@ const deleteTask = async (task: TaskWithStats) => {
 }
 
 .btn-close:hover {
-  color: #333;
+  color: #1f2937;
 }
 
 .form-group {
@@ -389,7 +411,7 @@ const deleteTask = async (task: TaskWithStats) => {
   margin-bottom: 4px;
   font-size: 12px;
   font-weight: 500;
-  color: #333;
+  color: #1f2937;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -398,7 +420,7 @@ const deleteTask = async (task: TaskWithStats) => {
 .form-group textarea {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #d0d7de;
+  border: 1px solid #d1d5db;
   border-radius: 6px;
   font-size: 14px;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -407,8 +429,8 @@ const deleteTask = async (task: TaskWithStats) => {
 
 .form-group input:focus,
 .form-group textarea:focus {
-  border-color: #007bff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
   outline: none;
 }
 
@@ -419,36 +441,43 @@ const deleteTask = async (task: TaskWithStats) => {
 }
 
 /* Buttons */
-.btn-primary {
-  background: #007bff;
-  color: white;
+.btn {
   border: none;
-  padding: 8px 16px;
   border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
+  padding: 8px 12px;
+  font-size: 13px;
   font-weight: 500;
-  transition: background 0.2s;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
 }
 
-.btn-primary:hover {
-  background: #0056b3;
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2563eb;
 }
 
 .btn-secondary {
-  background: #6c757d;
+  background: #6b7280;
   color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: background 0.2s;
 }
 
-.btn-secondary:hover {
-  background: #545b62;
+.btn-secondary:hover:not(:disabled) {
+  background: #4b5563;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 12px;
 }
 
 .btn-action {
@@ -493,84 +522,84 @@ const deleteTask = async (task: TaskWithStats) => {
   gap: 12px;
 }
 
+.tasks-content {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 .tasks-toolbar {
   display: flex;
   gap: 8px;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
 }
 
 .task-filter-input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #d0d7de;
+  border: 1px solid #d1d5db;
   border-radius: 6px;
   font-size: 14px;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.2s;
   font-family: inherit;
 }
 
 .task-filter-input:focus {
-  border-color: #007bff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
   outline: none;
-}
-
-.btn-clear {
-  background: none;
-  border: none;
-  color: #007bff;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: background 0.2s, color 0.2s;
-}
-
-.btn-clear:hover {
-  background: rgba(0, 123, 255, 0.1);
 }
 
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 40px 20px;
-  color: #999;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px;
   text-align: center;
 }
 
 .empty-icon {
-  font-size: 32px;
-  margin-bottom: 8px;
+  font-size: 48px;
+  opacity: 0.5;
 }
 
 .empty-message {
   font-size: 16px;
   font-weight: 500;
-  margin-bottom: 4px;
+  color: #374151;
 }
 
 .empty-hint {
   font-size: 14px;
-  opacity: 0.8;
+  color: #64748b;
+  max-width: 320px;
+  line-height: 1.5;
 }
 
 .task-card {
-  border: 1px solid #e0e0e0;
-  border-radius: 12px;
-  padding: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 12px;
   background: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: background-color 0.2s;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
 }
 
+.task-card:last-child {
+  border-bottom: none;
+}
+
 .task-card:hover {
-  border-color: #c8d4e6;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  background-color: #f8fafc;
 }
 
 .task-info {
@@ -580,15 +609,15 @@ const deleteTask = async (task: TaskWithStats) => {
 
 .task-name {
   font-weight: 600;
-  font-size: 14px;
-  color: #333;
+  font-size: 13px;
+  color: #1f2937;
   margin-bottom: 4px;
   line-height: 1.3;
 }
 
 .task-description {
-  font-size: 12px;
-  color: #666;
+  font-size: 11px;
+  color: #64748b;
   margin-bottom: 8px;
   line-height: 1.4;
 }
@@ -600,19 +629,19 @@ const deleteTask = async (task: TaskWithStats) => {
 }
 
 .stat-item {
-  font-size: 10px;
-  color: #666;
-  background: #f0f0f0;
+  font-size: 9px;
+  color: #64748b;
+  background: #f1f5f9;
   padding: 2px 6px;
-  border-radius: 8px;
+  border-radius: 4px;
 }
 
 .active-badge {
-  font-size: 10px;
-  background: #d4edda;
-  color: #155724;
+  font-size: 9px;
+  background: #dcfce7;
+  color: #166534;
   padding: 2px 6px;
-  border-radius: 8px;
+  border-radius: 4px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
