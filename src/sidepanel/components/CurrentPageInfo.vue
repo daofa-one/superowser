@@ -1019,11 +1019,10 @@ onUnmounted(() => {
 
 <style scoped>
 .current-page-info {
-  border: 1px solid #e0e0e0;
-  border-radius: 12px;
-  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
   background: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .page-content {
@@ -1074,10 +1073,10 @@ onUnmounted(() => {
 .status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 11px;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 9px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1085,24 +1084,24 @@ onUnmounted(() => {
 }
 
 .status-saved {
-  background: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
 }
 
 .status-unsaved {
-  background: #f8f9fa;
-  color: #6c757d;
-  border: 1px solid #e9ecef;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
 }
 
 .status-icon {
-  font-size: 10px;
+  font-size: 8px;
   line-height: 1;
 }
 
 .status-text {
-  font-size: 10px;
+  font-size: 8px;
   line-height: 1;
 }
 
@@ -1131,8 +1130,8 @@ onUnmounted(() => {
 }
 
 .url-display {
-  font-size: 13px;
-  color: #007bff;
+  font-size: 11px;
+  color: #3b82f6;
   font-weight: 500;
   line-height: 1.3;
   overflow: hidden;
@@ -1141,8 +1140,8 @@ onUnmounted(() => {
 }
 
 .page-title {
-  font-size: 12px;
-  color: #666;
+  font-size: 10px;
+  color: #64748b;
   margin-top: 2px;
   font-weight: normal;
   line-height: 1.3;
@@ -1174,12 +1173,12 @@ onUnmounted(() => {
 }
 
 .tag {
-  font-size: 12px;
-  background: #f0f8ff;
-  color: #0066cc;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid #e0f0ff;
+  font-size: 9px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 2px 4px;
+  border-radius: 3px;
+  border: 1px solid #dbeafe;
 }
 
 .no-tags {
@@ -1195,12 +1194,12 @@ onUnmounted(() => {
 }
 
 .task {
-  font-size: 12px;
-  background: #fff3cd;
-  color: #856404;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid #ffeaa7;
+  font-size: 9px;
+  background: #fef3c7;
+  color: #92400e;
+  padding: 2px 4px;
+  border-radius: 3px;
+  border: 1px solid #fde68a;
 }
 
 .no-tasks {
@@ -1221,11 +1220,11 @@ onUnmounted(() => {
 }
 
 .shortcut {
-  font-size: 12px;
-  background: #f8f9fa;
-  color: #495057;
-  padding: 2px 6px;
-  border-radius: 4px;
+  font-size: 9px;
+  background: #f1f5f9;
+  color: #64748b;
+  padding: 2px 4px;
+  border-radius: 3px;
   font-family: monospace;
 }
 
@@ -1310,9 +1309,9 @@ onUnmounted(() => {
 
 .form-header h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: #333;
+  color: #1f2937;
 }
 
 .form-content {

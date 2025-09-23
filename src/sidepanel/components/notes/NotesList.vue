@@ -177,7 +177,7 @@ onUnmounted(() => {
 
 <style scoped>
 .notes-list-container {
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .notes-header {
@@ -185,26 +185,26 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 0;
-  padding: 16px;
+  padding: 12px;
   background: #fff;
-  border: 1px solid #e9ecef;
+  border: 1px solid #e2e8f0;
   border-radius: 8px 8px 0 0;
   border-bottom: none;
 }
 
 .notes-header h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: #333;
+  color: #1f2937;
 }
 
 .notes-count {
-  font-size: 12px;
-  color: #666;
+  font-size: 9px;
+  color: #64748b;
   background: #f1f5f9;
-  border-radius: 999px;
-  padding: 2px 8px;
+  border-radius: 4px;
+  padding: 2px 6px;
 }
 
 .notes-list {
@@ -212,28 +212,28 @@ onUnmounted(() => {
   margin: 0;
   padding: 0;
   background: #fff;
-  border: 1px solid #e9ecef;
+  border: 1px solid #e2e8f0;
   border-radius: 0 0 8px 8px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .notes-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 32px 16px;
-  color: #999;
+  padding: 24px 12px;
+  color: #64748b;
   background: #fff;
-  border: 1px solid #e9ecef;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
 }
 
 .empty-icon {
-  font-size: 32px;
-  margin-bottom: 8px;
+  font-size: 24px;
+  margin-bottom: 6px;
+  opacity: 0.5;
 }
 
 .empty-message {
-  font-size: 14px;
+  font-size: 12px;
 }
 </style>

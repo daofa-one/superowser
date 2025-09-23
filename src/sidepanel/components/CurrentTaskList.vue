@@ -420,9 +420,9 @@ onUnmounted(() => {
           <div v-if="currentTask.description" class="task-description">
             {{ currentTask.description }}
           </div>
-        </div>
-        <div class="task-meta">
-          <span class="page-count">{{ taskPages.length }} page(s)</span>
+          <div class="task-meta">
+            <span class="page-count">{{ taskPages.length }} pages</span>
+          </div>
         </div>
       </header>
 
@@ -636,10 +636,9 @@ onUnmounted(() => {
 
 <style scoped>
 .current-task-list {
-  border: 1px solid #e0e0e0;
-  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
   background: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   overflow: hidden;
 }
 
@@ -695,48 +694,49 @@ onUnmounted(() => {
 
 /* Task Header */
 .task-header {
-  padding: 16px;
-  background: #f8f9fa;
-  border-bottom: 1px solid #e9ecef;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  padding: 12px;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .task-info {
   flex: 1;
+  min-width: 0;
 }
 
 .task-name {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: #333;
+  color: #1f2937;
   line-height: 1.3;
+  margin-bottom: 4px;
 }
 
 .task-description {
-  margin-top: 4px;
-  font-size: 13px;
-  color: #666;
+  font-size: 11px;
+  color: #64748b;
   line-height: 1.4;
+  margin-bottom: 8px;
 }
 
 .task-meta {
-  flex-shrink: 0;
-  margin-left: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .page-count {
-  font-size: 12px;
-  color: #666;
-  background: #e9ecef;
-  padding: 4px 8px;
-  border-radius: 12px;
+  font-size: 9px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 /* Pages List */
 .pages-list {
+  margin-top: 8px;
   max-height: 400px;
   overflow-y: auto;
 
@@ -751,7 +751,11 @@ onUnmounted(() => {
 }
 
 .pages {
-  padding: 6px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 0 12px 12px 12px;
 }
 
 .page-list {
@@ -760,7 +764,6 @@ onUnmounted(() => {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 
 .page-row {
@@ -768,17 +771,19 @@ onUnmounted(() => {
   grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 8px 8px;
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
+  padding: 8px;
+  border-bottom: 1px solid #e2e8f0;
   background: white;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: background-color 0.2s;
   position: relative;
 }
 
 .page-row:hover {
-  border-color: #c8d4e6;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  background-color: #f8fafc;
+}
+
+.page-row:last-child {
+  border-bottom: none;
 }
 
 .page-icon {
@@ -810,9 +815,9 @@ onUnmounted(() => {
 }
 
 .page-title {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-  color: #333;
+  color: #1f2937;
   line-height: 1.1;
   margin-bottom: 2px;
   overflow: hidden;
@@ -821,8 +826,8 @@ onUnmounted(() => {
 }
 
 .page-url {
-  font-size: 11px;
-  color: #007bff;
+  font-size: 10px;
+  color: #3b82f6;
   line-height: 1.1;
   margin-bottom: 4px;
   overflow: hidden;
@@ -838,12 +843,12 @@ onUnmounted(() => {
 }
 
 .tag {
-  font-size: 11px;
-  background: #f0f8ff;
-  color: #0066cc;
+  font-size: 9px;
+  background: #eff6ff;
+  color: #1d4ed8;
   padding: 2px 4px;
   border-radius: 3px;
-  border: 1px solid #e0f0ff;
+  border: 1px solid #dbeafe;
 }
 
 .page-actions {
