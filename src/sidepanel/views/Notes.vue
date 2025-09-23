@@ -228,6 +228,7 @@ const loadAllNotes = async () => {
             }
           })
         }
+
       } catch (error) {
         console.warn('Failed to load popular tags:', error)
       }
@@ -364,15 +365,15 @@ onUnmounted(() => {
       <div class="filter-row">
         <select v-model="filterTag" class="filter-select">
           <option value="">All tags</option>
-          <option v-for="tag in availableTags" :key="tag" :value="tag">
-            #{{ tag }}
+          <option v-for="tag in availableTags" :key="tag" :value="tag" :title="`#${tag}`">
+            #{{ tag.length > 20 ? tag.slice(0, 20) + '...' : tag }}
           </option>
         </select>
 
         <select v-model="filterTask" class="filter-select">
           <option value="">All tasks</option>
-          <option v-for="task in availableTasks" :key="task" :value="task">
-            &{{ task }}
+          <option v-for="task in availableTasks" :key="task" :value="task" :title="`&${task}`">
+            &{{ task.length > 20 ? task.slice(0, 20) + '...' : task }}
           </option>
         </select>
       </div>
@@ -496,8 +497,7 @@ onUnmounted(() => {
 }
 
 .filter-select {
-  min-width: 120px;
-  max-width: 180px;
+  flex: 1;
   padding: 8px 12px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
