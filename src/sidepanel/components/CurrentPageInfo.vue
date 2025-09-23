@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useSidePanelStore } from '../stores/sidepanel-store'
 import type { NoteEntry } from '../../shared/models'
+import NotesList from './notes/NotesList.vue'
 
 const store = useSidePanelStore()
 
@@ -36,18 +37,7 @@ const pageNotes = ref<NoteEntry[]>([])
 const includePageAssociation = ref(true)
 const selectedNoteTasks = ref<string[]>([])
 const noteTaskInput = ref('')
-const showNoteMenu = ref(false)
-const selectedNoteId = ref<string | null>(null)
-const selectedNote = ref<NoteEntry | null>(null)
-const noteMenuPosition = ref({ x: 0, y: 0 })
-const editingNoteId = ref<string | null>(null)
-const editNoteContent = ref('')
-const editNoteComment = ref('')
-const editIncludePageAssociation = ref(true)
-const editSelectedNoteTasks = ref<string[]>([])
-const editNoteTaskInput = ref('')
-const showEditTaskSuggestions = ref(false)
-const editFilteredTasks = ref<string[]>([])
+// Notes state is now handled by NotesList component
 
 const formatDateTime = (value?: Date | string) => {
   if (!value) return ''
@@ -596,6 +586,11 @@ const cancelSave = () => {
   showSaveForm.value = false
   taskInput.value = ''
   selectedTasks.value = []
+}
+
+const handleNoteEdit = (noteId: string) => {
+  // Handle any specific logic when a note starts editing
+  console.log('Note editing started:', noteId)
 }
 
 const showNoteContextMenu = (event: MouseEvent, noteId: string) => {
@@ -1280,191 +1275,18 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Saved Notes Section -->
-      <div v-if="pageNotes.length > 0" class="notes-section">
-        <div class="notes-header">
-          <h4>Saved Notes</h4>
-          <span class="notes-count">{{ pageNotes.length }}</span>
-        </div>
-        <ul class="notes-list">
-          <li
-            v-for="note in pageNotes"
-            :key="note.id"
-            class="note-item"
-            :class="{ 'editing': editingNoteId === note.id }"
-            @contextmenu="editingNoteId !== note.id ? showNoteContextMenu($event, note.id) : null"
-            @click="hideNoteMenu"
-          >
-            <!-- Edit Mode -->
-            <div v-if="editingNoteId === note.id" class="note-edit-form">
-              <div class="edit-form-group">
-                <label for="edit-note-content">Note Content *</label>
-                <textarea
-                  id="edit-note-content"
-                  v-model="editNoteContent"
-                  rows="4"
-                  placeholder="Edit note content"
-                  class="edit-note-textarea"
-                  @keyup.escape="cancelEditNote"
-                ></textarea>
-              </div>
-
-              <div class="edit-form-group">
-                <label for="edit-note-comment">Comment (optional)</label>
-                <input
-                  id="edit-note-comment"
-                  v-model="editNoteComment"
-                  type="text"
-                  placeholder="Edit comment"
-                  class="edit-note-comment-input"
-                  @keyup.escape="cancelEditNote"
-                />
-              </div>
-
-              <div class="edit-form-group association-group">
-                <label>Link to page</label>
-                <div class="association-row">
-                  <label class="association-toggle">
-                    <input
-                      v-model="editIncludePageAssociation"
-                      type="checkbox"
-                    />
-                    <span>Include current page</span>
-                  </label>
-                  <span v-if="editIncludePageAssociation && currentPage" class="association-chip">
-                    {{ currentPage.title || displayUrl }}
-                    <button type="button" @click="editIncludePageAssociation = false">×</button>
-                  </span>
-                  <span v-else class="association-hint">Note will not be linked to the page.</span>
-                </div>
-              </div>
-
-              <div class="edit-form-group association-group">
-                <label>Link to tasks</label>
-                <div class="association-row">
-                  <div v-if="editSelectedNoteTasks.length" class="association-chips">
-                    <span v-for="task in editSelectedNoteTasks" :key="task" class="association-chip">
-                      &{{ task }}
-                      <button type="button" @click="removeEditNoteTask(task)">×</button>
-                    </span>
-                  </div>
-                  <span v-else class="association-hint">No tasks linked</span>
-                </div>
-                <div class="task-chip-actions">
-                  <button type="button" class="btn btn-secondary btn-small" @click="resetEditNoteTasks">
-                    Use page tasks
-                  </button>
-                  <button type="button" class="btn btn-secondary btn-small" @click="clearEditNoteTasks">
-                    Clear tasks
-                  </button>
-                  <div class="task-input-wrapper">
-                    <input
-                      v-model="editNoteTaskInput"
-                      type="text"
-                      placeholder="Type to search tasks or create new"
-                      class="note-task-input"
-                      autocomplete="off"
-                      @input="onEditTaskInputChange"
-                      @focus="onEditTaskInputFocus"
-                      @blur="onEditTaskInputBlur"
-                      @keyup.enter.prevent="editNoteTaskInput && addEditNoteTask(editNoteTaskInput)"
-                    />
-
-                    <!-- Task Suggestions Dropdown -->
-                    <div v-if="showEditTaskSuggestions" class="task-suggestions">
-                      <div
-                        v-for="task in editFilteredTasks"
-                        :key="task"
-                        class="task-suggestion-item"
-                        @mousedown="selectEditTask(task)"
-                      >
-                        📁 {{ task }}
-                      </div>
-                      <div
-                        v-if="editNoteTaskInput && !editFilteredTasks.includes(editNoteTaskInput) && !editSelectedNoteTasks.includes(editNoteTaskInput)"
-                        class="task-suggestion-item create-new"
-                        @mousedown="selectEditTask(editNoteTaskInput)"
-                      >
-                        ➕ Create new task: "{{ editNoteTaskInput }}"
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="edit-form-actions">
-                <button class="btn btn-primary btn-small" :disabled="!editNoteContent.trim()" @click="saveEditedNote">
-                  Save
-                </button>
-                <button class="btn btn-secondary btn-small" @click="cancelEditNote">
-                  Cancel
-                </button>
-              </div>
-            </div>
-
-            <!-- View Mode -->
-            <div v-else>
-              <p class="note-content">{{ note.content }}</p>
-              <p v-if="note.comment" class="note-comment">💬 {{ note.comment }}</p>
-              <div class="note-meta">
-                <span class="note-timestamp">{{ formatDateTime(note.createdAt) }}</span>
-                <div class="note-links">
-                  <span v-if="note.pageId" class="note-link-badge">📄 Page</span>
-                  <div v-if="note.tasks && note.tasks.length" class="note-tasks">
-                    <span v-for="task in note.tasks" :key="task" class="note-task">&{{ task }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </li>
-        </ul>
-      </div>
-
-      <!-- Note Context Menu -->
-      <div
-        v-if="showNoteMenu && selectedNote"
-        class="note-context-menu"
-        :style="{ left: noteMenuPosition.x + 'px', top: noteMenuPosition.y + 'px' }"
-        @click.stop
-      >
-        <!-- Edit note option -->
-        <button class="menu-item" @click="startEditingNote">
-          ✏️ Edit note
-        </button>
-
-        <!-- Separator -->
-        <div class="menu-separator"></div>
-
-        <!-- Remove from page option (only if note is linked to page) -->
-        <button
-          v-if="selectedNote.pageId"
-          class="menu-item"
-          @click="disassociateNoteFromPage"
-        >
-          🔗 Remove from page
-        </button>
-
-        <!-- Remove from task options (for each task the note is linked to) -->
-        <button
-          v-for="task in selectedNote.tasks"
-          :key="task"
-          class="menu-item"
-          @click="removeNoteFromTask(task)"
-        >
-          📁 Remove from &{{ task }}
-        </button>
-
-        <!-- Separator if there are page/task options -->
-        <div
-          v-if="selectedNote.pageId || selectedNote.tasks.length > 0"
-          class="menu-separator"
-        ></div>
-
-        <!-- Delete note option -->
-        <button class="menu-item menu-item-danger" @click="deleteNote">
-          🗑️ Delete note
-        </button>
-      </div>
+      <!-- Notes Section -->
+      <NotesList
+        :notes="pageNotes"
+        :show-page-association="false"
+        :show-task-association="true"
+        :allow-edit="true"
+        :allow-delete="true"
+        :context-menu-actions="['edit', 'removeFromPage', 'removeFromTask', 'delete']"
+        @note-updated="loadCurrentPageInfo"
+        @note-deleted="loadCurrentPageInfo"
+        @note-edited="handleNoteEdit"
+      />
     </div>
 
     <!-- No Page State -->

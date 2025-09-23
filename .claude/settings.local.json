@@ -12,7 +12,9 @@
       "Bash(npx tsc:*)",
       "Bash(npx vue-tsc:*)",
       "Bash(pnpm lint:*)",
-      "Bash(npm run lint)"
+      "Bash(npm run lint)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run:*)"
     ],
     "deny": [],
     "ask": []

@@ -157,6 +157,16 @@ export interface GetNotesByPageMessage extends BaseMessage {
   data: { pageId: string }
 }
 
+export interface UpdateNoteMessage extends BaseMessage {
+  type: 'UPDATE_NOTE'
+  data: { id: string; [key: string]: any }
+}
+
+export interface DeleteNoteMessage extends BaseMessage {
+  type: 'DELETE_NOTE'
+  data: { id: string }
+}
+
 // Union type for all request messages
 export type RequestMessage =
   | SavePageMessage
@@ -187,6 +197,8 @@ export type RequestMessage =
   | GetRecentPagesMessage
   | RemovePageFromTaskMessage
   | GetNotesByPageMessage
+  | UpdateNoteMessage
+  | DeleteNoteMessage
 
 // Response messages from background to side panel
 export interface SuccessResponse<T = any> extends BaseMessage {
