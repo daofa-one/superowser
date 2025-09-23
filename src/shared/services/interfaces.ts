@@ -32,6 +32,7 @@ export interface INoteService {
   update(id: string, updates: Partial<NoteEntry>): Promise<NoteEntry>
   delete(id: string): Promise<void>
   search(query: string): Promise<NoteEntry[]>
+  getAll(limit?: number, offset?: number): Promise<NoteEntry[]>
 }
 
 export interface ITaskService {

@@ -59,6 +59,21 @@ db.version(2).stores({
   })
 })
 
+// Version 3: Remove tags from notes (tags should only exist on pages)
+db.version(3).stores({
+  pages: '++id, url, title, *tags, shortcut, *tasks, createdAt, updatedAt',
+  notes: '++id, pageId, content, *tasks, createdAt, updatedAt',
+  tasks: '++id, name, isActive, createdAt, updatedAt',
+  settings: '++key'
+}).upgrade(trans => {
+  // Remove tags from notes - they should inherit from associated pages
+  return trans.notes.toCollection().modify(note => {
+    if (note.tags) {
+      delete note.tags
+    }
+  })
+})
+
 // Utility functions
 const generateId = () => crypto.randomUUID()
 const now = () => new Date()
@@ -192,7 +207,7 @@ export class DexieNoteService implements INoteService {
       pageId: request.pageId,
       content: request.content,
       comment: request.comment,
-      tags: request.tags || [],
+      tags: [], // Always empty after migration
       tasks: normalizedTasks,
       position: request.position,
       createdAt: now(),
@@ -219,8 +234,9 @@ export class DexieNoteService implements INoteService {
     return await db.notes.where('tasks').anyOf([normalized]).toArray()
   }
 
-  async getByTags(tags: string[]): Promise<NoteEntry[]> {
-    return await db.notes.where('tags').anyOf(tags).toArray()
+  async getByTags(_tags: string[]): Promise<NoteEntry[]> {
+    // Notes no longer have tags after v3 migration - return empty array
+    return []
   }
 
   async update(id: string, updates: Partial<NoteEntry>): Promise<NoteEntry> {
@@ -249,10 +265,18 @@ export class DexieNoteService implements INoteService {
       .filter(note =>
         searchTerms.every(term =>
           note.content.toLowerCase().includes(term) ||
-          (note.comment && note.comment.toLowerCase().includes(term)) ||
-          note.tags.some(tag => tag.toLowerCase().includes(term))
+          (note.comment && note.comment.toLowerCase().includes(term))
         )
       )
+      .toArray()
+  }
+
+  async getAll(limit = 1000, offset = 0): Promise<NoteEntry[]> {
+    return await db.notes
+      .orderBy('updatedAt')
+      .reverse()
+      .offset(offset)
+      .limit(limit)
       .toArray()
   }
 }

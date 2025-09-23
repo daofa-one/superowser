@@ -18,7 +18,7 @@ export interface NoteEntry {
   pageId?: string    // optional - can be standalone note
   content: string    // highlighted text or note content
   comment?: string   // user's comment on the highlight
-  tags: string[]     // legacy, deprecated
+  tags: string[]     // removed in v3 migration - notes inherit tags from pages
   tasks: string[]    // array of &tasks for grouping (changed from single task)
   position?: {       // position info for highlights
     start: number

@@ -472,20 +472,12 @@ export class SearchUseCases {
 
   async getPopularTags(limit = 20): Promise<Array<{ tag: string; count: number }>> {
     const pages = await this.pageService.getAll(1000)
-    const notes = await this.noteService.getByTags([]) // Get all notes
 
     const tagCounts = new Map<string, number>()
 
-    // Count tags from pages
+    // Count tags from pages only (notes no longer have tags after v3 migration)
     pages.forEach(page => {
       page.tags.forEach(tag => {
-        tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1)
-      })
-    })
-
-    // Count tags from notes
-    notes.forEach(note => {
-      note.tags.forEach(tag => {
         tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1)
       })
     })
