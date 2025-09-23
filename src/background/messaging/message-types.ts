@@ -152,6 +152,11 @@ export interface RemovePageFromTaskMessage extends BaseMessage {
   data: { taskName: string; pageId: string }
 }
 
+export interface GetNotesByPageMessage extends BaseMessage {
+  type: 'GET_NOTES_BY_PAGE'
+  data: { pageId: string }
+}
+
 // Union type for all request messages
 export type RequestMessage =
   | SavePageMessage
@@ -181,6 +186,7 @@ export type RequestMessage =
   | SaveTagsMessage
   | GetRecentPagesMessage
   | RemovePageFromTaskMessage
+  | GetNotesByPageMessage
 
 // Response messages from background to side panel
 export interface SuccessResponse<T = any> extends BaseMessage {

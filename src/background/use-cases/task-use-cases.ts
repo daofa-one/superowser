@@ -3,7 +3,8 @@
 import {
   TaskEntry,
   PageEntry,
-  NoteEntry
+  NoteEntry,
+  SaveNoteRequest
 } from '../../shared/models'
 import {
   ITaskService,
@@ -279,6 +280,39 @@ export class TaskUseCases {
 
   async openAllPagesInTask(taskName: string): Promise<PageEntry[]> {
     return this.pageService.getByTask(taskName)
+  }
+
+  async saveNote(request: SaveNoteRequest): Promise<NoteEntry> {
+    const note = await this.noteService.save(request)
+    const taskNames = request.tasks || []
+
+    if (taskNames.length > 0) {
+      for (const rawName of taskNames) {
+        const normalizedName = this.normalizeName(rawName, 'associate note with task')
+
+        let task = await this.taskService.getByName(normalizedName)
+        if (!task) {
+          task = await this.taskService.create(normalizedName)
+        }
+
+        await this.taskService.addNote(task.id, note.id)
+
+        if (this.backgroundStore) {
+          try {
+            this.backgroundStore.broadcastStateUpdate(`task.${normalizedName}.contentChanged`, Date.now())
+          } catch (error) {
+            console.warn('Could not broadcast task note update:', error)
+          }
+        }
+
+        const refreshedTask = await this.taskService.getById(task.id)
+        if (refreshedTask) {
+          this.notifyTaskChange(refreshedTask)
+        }
+      }
+    }
+
+    return note
   }
 
   private notifyTaskChange(task: TaskEntry) {

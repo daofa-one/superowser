@@ -451,7 +451,7 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 break;
 
             case 'SAVE_NOTE':
-                data = await container.noteService.save(message.data);
+                data = await container.taskUseCases.saveNote(message.data);
                 break;
 
             case 'GET_PAGE':
@@ -505,6 +505,10 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
 
             case 'MOVE_PAGE_TO_TASK':
                 data = await container.pageUseCases.movePageToTask(message.data.pageId, message.data.taskName);
+                break;
+
+            case 'GET_NOTES_BY_PAGE':
+                data = await container.noteService.getByPageId(message.data.pageId);
                 break;
 
             case 'UPDATE_PAGE':

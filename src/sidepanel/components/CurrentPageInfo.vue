@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useSidePanelStore } from '../stores/sidepanel-store'
+import type { NoteEntry } from '../../shared/models'
 
 const store = useSidePanelStore()
 
 // Current page data
 const currentPage = ref<{
+  id?: string
   url: string;
   title: string;
   favicon?: string;
@@ -27,6 +29,22 @@ const showTaskSuggestions = ref(false)
 const availableTasks = ref<string[]>([])
 const filteredTasks = ref<string[]>([])
 const selectedTasks = ref<string[]>([])
+const showNoteForm = ref(false)
+const noteContentInput = ref('')
+const noteCommentInput = ref('')
+const pageNotes = ref<NoteEntry[]>([])
+const includePageAssociation = ref(true)
+const selectedNoteTasks = ref<string[]>([])
+const noteTaskInput = ref('')
+
+const formatDateTime = (value?: Date | string) => {
+  if (!value) return ''
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+  return date.toLocaleString()
+}
 
 // Computed properties
 const displayUrl = computed(() => {
@@ -85,22 +103,48 @@ const loadCurrentPageInfo = async () => {
         console.debug('Page lookup not ready, keeping existing task metadata')
       }
 
-      let savedPage = null
+      let savedPage: any = null
       if (savedPageResponse && savedPageResponse.type === 'SUCCESS' && savedPageResponse.data) {
         savedPage = savedPageResponse.data
         console.log('Found saved page:', savedPage)
       }
 
+      let noteCount = 0
+      let notes: NoteEntry[] = []
+      pageNotes.value = []
+      if (savedPage?.id) {
+        try {
+          const notesResponse = await store.sendMessage({
+            type: 'GET_NOTES_BY_PAGE',
+            data: { pageId: savedPage.id }
+          })
+
+          if (notesResponse?.type === 'SUCCESS' && Array.isArray(notesResponse.data)) {
+            notes = notesResponse.data.map((note: any) => ({
+              ...note,
+              createdAt: note.createdAt ? new Date(note.createdAt) : undefined,
+              updatedAt: note.updatedAt ? new Date(note.updatedAt) : undefined
+            }))
+            noteCount = notes.length
+          }
+        } catch (error) {
+          console.error('Failed to load notes for page:', error)
+        }
+      }
+
       currentPage.value = {
+        id: savedPage?.id,
         url: tabData.url,
         title: tabData.title,
         favicon: tabData.favicon,
         tags: savedPage?.tags || [],
         tasks: savedPage?.tasks || [],
-        noteCount: savedPage?.noteCount || 0,
+        noteCount,
         shortcut: savedPage?.shortcut || undefined
       }
+      pageNotes.value = notes
       isPageSaved.value = !!savedPage
+      selectedNoteTasks.value = [...(currentPage.value.tasks || [])]
 
       // Update selected tasks if save form is open
       if (showSaveForm.value) {
@@ -117,6 +161,7 @@ const loadCurrentPageInfo = async () => {
     if (!hadPage) {
       currentPage.value = null
       isPageSaved.value = false
+      pageNotes.value = []
     }
   } finally {
     isLoading.value = false
@@ -170,6 +215,7 @@ const toggleShortcutForm = () => {
     // Close other forms if open
     showTagForm.value = false
     showSaveForm.value = false
+    showNoteForm.value = false
     // Pre-fill with existing shortcut if any
     shortcutInput.value = currentPage.value?.shortcut || ''
   }
@@ -219,6 +265,7 @@ const toggleTagForm = () => {
     // Close other forms if open
     showShortcutForm.value = false
     showSaveForm.value = false
+    showNoteForm.value = false
     // Pre-fill with existing tags if any
     currentTags.value = [...(currentPage.value?.tags || [])]
     tagInput.value = ''
@@ -273,7 +320,151 @@ const saveTags = async () => {
 const cancelTags = () => {
   showTagForm.value = false
   tagInput.value = ''
-  currentTags.value = []
+  currentTags.value = [...(currentPage.value?.tags || [])]
+}
+
+const toggleNoteForm = () => {
+  showNoteForm.value = !showNoteForm.value
+  if (showNoteForm.value) {
+    showShortcutForm.value = false
+    showTagForm.value = false
+    showSaveForm.value = false
+    noteContentInput.value = ''
+    noteCommentInput.value = ''
+    includePageAssociation.value = true
+    selectedNoteTasks.value = [...(currentPage.value?.tasks || [])]
+    noteTaskInput.value = ''
+  }
+}
+
+const cancelNote = () => {
+  showNoteForm.value = false
+  noteContentInput.value = ''
+  noteCommentInput.value = ''
+  selectedNoteTasks.value = []
+  includePageAssociation.value = true
+  noteTaskInput.value = ''
+}
+
+const normalizeTaskName = (name: string) => name.trim()
+
+const addNoteTask = (taskName: string) => {
+  const normalized = normalizeTaskName(taskName)
+  if (!normalized) {
+    return
+  }
+
+  if (!selectedNoteTasks.value.includes(normalized)) {
+    selectedNoteTasks.value.push(normalized)
+  }
+  noteTaskInput.value = ''
+}
+
+const removeNoteTask = (taskName: string) => {
+  selectedNoteTasks.value = selectedNoteTasks.value.filter(task => task !== taskName)
+}
+
+const resetNoteTasks = () => {
+  selectedNoteTasks.value = [...(currentPage.value?.tasks || [])]
+  noteTaskInput.value = ''
+}
+
+const clearNoteTasks = () => {
+  selectedNoteTasks.value = []
+  noteTaskInput.value = ''
+}
+
+const saveNote = async () => {
+  const content = noteContentInput.value.trim()
+
+  if (!content) {
+    store.addNotification({
+      type: 'error',
+      message: 'Note content is required'
+    })
+    return
+  }
+
+  if (!currentPage.value) {
+    store.addNotification({
+      type: 'error',
+      message: 'No page available for note'
+    })
+    return
+  }
+
+  try {
+    if (includePageAssociation.value && !currentPage.value?.id) {
+      const savePageResponse = await store.sendMessage({
+        type: 'SAVE_PAGE',
+        data: {
+          url: currentPage.value!.url,
+          title: currentPage.value!.title,
+          favicon: currentPage.value?.favicon,
+          tags: currentPage.value?.tags || [],
+          tasks: currentPage.value?.tasks || [],
+          shortcut: currentPage.value?.shortcut
+        }
+      })
+
+      if (savePageResponse?.type === 'SUCCESS' && savePageResponse.data) {
+        currentPage.value = {
+          ...currentPage.value!,
+          id: savePageResponse.data.id,
+          tags: savePageResponse.data.tags || currentPage.value!.tags,
+          tasks: savePageResponse.data.tasks || currentPage.value!.tasks,
+          noteCount: Array.isArray(pageNotes.value) ? pageNotes.value.length : currentPage.value!.noteCount,
+          shortcut: savePageResponse.data.shortcut || currentPage.value!.shortcut
+        }
+        isPageSaved.value = true
+      } else {
+        throw new Error('Failed to save page before adding note')
+      }
+    } else if (!includePageAssociation.value) {
+      // Ensure we don't send a stale id when the user wants a task-only note
+      includePageAssociation.value = false
+    }
+
+    const payload: Record<string, unknown> = {
+      content
+    }
+
+    const comment = noteCommentInput.value.trim()
+    if (comment) {
+      payload.comment = comment
+    }
+
+    if (includePageAssociation.value && currentPage.value.id) {
+      payload.pageId = currentPage.value.id
+    }
+
+    if (selectedNoteTasks.value.length > 0) {
+      payload.tasks = selectedNoteTasks.value
+    }
+
+    const response = await store.sendMessage({
+      type: 'SAVE_NOTE',
+      data: payload
+    })
+
+    if (response?.type !== 'SUCCESS') {
+      throw new Error(response?.error?.message || 'Failed to save note')
+    }
+
+    store.addNotification({
+      type: 'success',
+      message: 'Note saved'
+    })
+
+    cancelNote()
+    await loadCurrentPageInfo()
+  } catch (error) {
+    console.error('Failed to save note:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to save note'
+    })
+  }
 }
 
 const loadAvailableTasks = async () => {
@@ -297,6 +488,7 @@ const toggleSaveForm = async () => {
     // Close other forms if open
     showShortcutForm.value = false
     showTagForm.value = false
+    showNoteForm.value = false
     // Load available tasks
     await loadAvailableTasks()
     // Pre-fill with existing tasks from saved page
@@ -510,9 +702,11 @@ onUnmounted(() => {
         </div>
 
         <div class="notes-container">
+        <!--
           <div v-if="hasNotes" class="notes-indicator">
             📝 {{ currentPage.noteCount || 0 }} note(s)
           </div>
+        -->
           <div v-if="currentPage.shortcut" class="shortcut">
             @{{ currentPage.shortcut }}
           </div>
@@ -531,12 +725,15 @@ onUnmounted(() => {
           <button class="btn btn-icon" title="Manage tags" @click="toggleTagForm">
             #
           </button>
+          <button class="btn btn-icon" title="Add note" @click="toggleNoteForm">
+            !
+          </button>
           <button class="btn btn-icon" title="Copy URL" @click="copyUrl">
             📋
           </button>
-          <button class="btn btn-icon" title="Open in new tab" @click="openPage">
+          <!--button class="btn btn-icon" title="Open in new tab" @click="openPage">
             🔗
-          </button>
+          </button-->
         </div>
       </div>
 
@@ -632,6 +829,121 @@ onUnmounted(() => {
             Cancel
           </button>
         </div>
+      </div>
+
+      <!-- Note Form Section -->
+      <div v-if="showNoteForm" class="note-form-section">
+        <div class="form-header">
+          <h4>Add Note</h4>
+        </div>
+
+        <div class="form-content">
+          <div class="input-group">
+            <label for="note-content-input">Note *</label>
+            <textarea
+              id="note-content-input"
+              v-model="noteContentInput"
+              rows="4"
+              placeholder="Write your note here"
+              class="note-textarea"
+              @keyup.escape="cancelNote"
+            ></textarea>
+          </div>
+
+          <div class="input-group">
+            <label for="note-comment-input">Comment (optional)</label>
+            <input
+              id="note-comment-input"
+              v-model="noteCommentInput"
+              type="text"
+              placeholder="Add a short comment"
+              class="note-comment-input"
+              @keyup.escape="cancelNote"
+            />
+          </div>
+
+          <div class="input-group association-group">
+            <label>Link to page</label>
+            <div class="association-row">
+              <label class="association-toggle">
+                <input
+                  type="checkbox"
+                  v-model="includePageAssociation"
+                />
+                <span>Include current page</span>
+              </label>
+              <span v-if="includePageAssociation && currentPage" class="association-chip">
+                {{ currentPage.title || displayUrl }}
+                <button type="button" @click="includePageAssociation = false">×</button>
+              </span>
+              <span v-else class="association-hint">Note will not be linked to the page.</span>
+            </div>
+          </div>
+
+          <div class="input-group association-group">
+            <label>Link to tasks</label>
+            <div class="association-row">
+              <div v-if="selectedNoteTasks.length" class="association-chips">
+                <span v-for="task in selectedNoteTasks" :key="task" class="association-chip">
+                  &{{ task }}
+                  <button type="button" @click="removeNoteTask(task)">×</button>
+                </span>
+              </div>
+              <span v-else class="association-hint">No tasks linked</span>
+            </div>
+            <div class="task-chip-actions">
+              <button type="button" class="btn btn-secondary" @click="resetNoteTasks">
+                Use page tasks
+              </button>
+              <button type="button" class="btn btn-secondary" @click="clearNoteTasks">
+                Clear tasks
+              </button>
+              <input
+                v-model="noteTaskInput"
+                type="text"
+                placeholder="Type to add task"
+                class="note-task-input"
+                @keyup.enter.prevent="noteTaskInput && addNoteTask(noteTaskInput)"
+              />
+            </div>
+          </div>
+
+          <p class="note-hint">
+            Use the toggles above to keep the note connected to this page, specific tasks, or both.
+          </p>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-primary" :disabled="!noteContentInput.trim()" @click="saveNote">
+            Save Note
+          </button>
+          <button class="btn btn-secondary" @click="cancelNote">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <!-- Saved Notes Section -->
+      <div v-if="pageNotes.length > 0" class="notes-section">
+        <div class="notes-header">
+          <h4>Saved Notes</h4>
+          <span class="notes-count">{{ pageNotes.length }}</span>
+        </div>
+        <ul class="notes-list">
+          <li v-for="note in pageNotes" :key="note.id" class="note-item">
+            <p class="note-content">{{ note.content }}</p>
+            <p v-if="note.comment" class="note-comment">💬 {{ note.comment }}</p>
+            <div class="note-meta">
+              <span class="note-timestamp">{{ formatDateTime(note.createdAt) }}</span>
+              <div class="note-links">
+                <span v-if="note.pageId" class="note-link-badge">📄 Page</span>
+                <div v-if="note.tasks && note.tasks.length" class="note-tasks">
+                  <span v-for="task in note.tasks" :key="task" class="note-task">&{{ task }}</span>
+                </div>
+              </div>
+            </div>
+          </li>
+        </ul>
       </div>
 
       <!-- Save Page Form Section -->
@@ -1075,6 +1387,171 @@ onUnmounted(() => {
   border: 1px solid #e9ecef;
 }
 
+.note-form-section {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.association-group {
+  margin-top: 16px;
+}
+
+.association-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.association-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.association-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #e0f2fe;
+  color: #0c4a6e;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.association-chip button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.association-hint {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.association-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-chip-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.notes-section {
+  margin-top: 16px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.notes-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.notes-count {
+  font-size: 12px;
+  color: #666;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.notes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.note-item {
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.note-content {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: #1f2937;
+  white-space: pre-wrap;
+}
+
+.note-comment {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.note-timestamp {
+  font-style: italic;
+}
+
+.note-links {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.note-link-badge {
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.note-tasks {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.note-task {
+  background: #e0f2fe;
+  color: #0c4a6e;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
 .tag-input-wrapper {
   display: flex;
   gap: 8px;
@@ -1191,6 +1668,62 @@ onUnmounted(() => {
   font-size: 13px;
   font-family: inherit;
   transition: border-color 0.2s;
+}
+
+.note-textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.2s;
+}
+
+.note-textarea:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.note-comment-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.note-comment-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.note-task-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.note-task-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.note-hint {
+  font-size: 12px;
+  color: #666;
+  margin-top: 8px;
 }
 
 .task-input:focus {
