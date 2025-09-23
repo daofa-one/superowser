@@ -476,11 +476,15 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                         // If no page associated with note, show in side panel
                         const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
                         if (currentTab && currentTab.id) {
+                            let panelOpened = false;
                             try {
                                 await chrome.sidePanel.open({ tabId: currentTab.id });
+                                panelOpened = true;
                             } catch (openError) {
                                 console.warn('Failed to auto-open side panel for note result:', openError);
                             }
+
+                            // Send results for side panel
                             sendRuntimeMessageSafe({
                                 type: 'OMNIBOX_RESULTS',
                                 data: {
@@ -492,7 +496,7 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                         return; // Exit early to avoid the multiple results handling
                     }
                 } else {
-                    // Multiple results - open side panel to show them
+                    // Multiple results - try to open side panel but send results regardless
                     const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
                     if (currentTab && currentTab.id) {
                         let panelOpened = false;
@@ -503,26 +507,26 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                             console.warn('Failed to auto-open side panel from omnibox input:', openError);
                         }
 
-                const deliverResults = () => {
-                    sendRuntimeMessageSafe({
-                        type: 'OMNIBOX_RESULTS',
-                        data: {
-                            query: text,
-                            results: result.results
-                        }
-                    });
-                };
-
-                if (panelOpened) {
-                    setTimeout(deliverResults, 500);
-                } else {
-                    deliverResults();
-                }
+                        // Send results for side panel
+                        sendRuntimeMessageSafe({
+                            type: 'OMNIBOX_RESULTS',
+                            data: {
+                                query: text,
+                                results: result.results
+                            }
+                        });
                     }
                 }
             } else {
                 console.log('No results found for:', text);
-                // Could show a notification or open side panel with "no results" message
+                // Send empty results to side panel so it can still navigate to Home
+                sendRuntimeMessageSafe({
+                    type: 'OMNIBOX_RESULTS',
+                    data: {
+                        query: text,
+                        results: []
+                    }
+                });
             }
         } else if (result.type === 'error') {
             console.error('Omnibox command error:', result.message);
