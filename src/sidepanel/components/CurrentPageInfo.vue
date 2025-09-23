@@ -685,9 +685,7 @@ onUnmounted(() => {
               #{{ tag }}
             </span>
           </div>
-          <div v-else class="no-tags">
-            No tags
-          </div>
+        <!-- <div v-else class="no-tags"> No tags </div> -->
         </div>
 
         <div class="tasks-container">
@@ -696,17 +694,11 @@ onUnmounted(() => {
               &{{ task }}
             </span>
           </div>
-          <div v-else class="no-tasks">
-            No tasks
-          </div>
+        <!-- <div v-else class="no-tasks"> No tasks </div> -->
         </div>
 
         <div class="notes-container">
-        <!--
-          <div v-if="hasNotes" class="notes-indicator">
-            📝 {{ currentPage.noteCount || 0 }} note(s)
-          </div>
-        -->
+        <!-- <div v-if="hasNotes" class="notes-indicator"> 📝 {{ currentPage.noteCount || 0 }} note(s) </div> -->
           <div v-if="currentPage.shortcut" class="shortcut">
             @{{ currentPage.shortcut }}
           </div>
@@ -1163,10 +1155,9 @@ onUnmounted(() => {
 
 /* Middle Section */
 .middle-section {
-  margin-bottom: 12px;
+  margin-bottom: 0px;
   padding: 8px 0;
   border-top: 1px solid #f0f0f0;
-  border-bottom: 1px solid #f0f0f0;
 }
 
 .tags-container {
@@ -1242,8 +1233,8 @@ onUnmounted(() => {
 /* Action Section */
 .action-section {
   display: flex;
-  justify-content: center;
-  align-items: center;
+  justify-content: right;
+  align-items: right;
 }
 
 .action-buttons {

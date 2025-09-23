@@ -26,7 +26,7 @@ import FooterBar from './components/FooterBar.vue';
 
 .sp-main {
   flex: 1;
-  overflow-y: auto;
+  overflow-y: scroll; /* Always reserve space for scrollbar */
   background: white;
   min-height: 0;
 }
