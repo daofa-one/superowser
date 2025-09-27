@@ -1076,7 +1076,7 @@ onUnmounted(() => {
   gap: 3px;
   padding: 2px 6px;
   border-radius: 4px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1096,12 +1096,12 @@ onUnmounted(() => {
 }
 
 .status-icon {
-  font-size: 8px;
+  font-size: 10px;
   line-height: 1;
 }
 
 .status-text {
-  font-size: 8px;
+  font-size: 10px;
   line-height: 1;
 }
 
@@ -1130,7 +1130,7 @@ onUnmounted(() => {
 }
 
 .url-display {
-  font-size: 11px;
+  font-size: 13px;
   color: #3b82f6;
   font-weight: 500;
   line-height: 1.3;
@@ -1140,7 +1140,7 @@ onUnmounted(() => {
 }
 
 .page-title {
-  font-size: 10px;
+  font-size: 12px;
   color: #64748b;
   margin-top: 2px;
   font-weight: normal;
@@ -1173,7 +1173,7 @@ onUnmounted(() => {
 }
 
 .tag {
-  font-size: 9px;
+  font-size: 11px;
   background: #eff6ff;
   color: #1d4ed8;
   padding: 2px 4px;
@@ -1194,7 +1194,7 @@ onUnmounted(() => {
 }
 
 .task {
-  font-size: 9px;
+  font-size: 11px;
   background: #fef3c7;
   color: #92400e;
   padding: 2px 4px;
@@ -1220,7 +1220,7 @@ onUnmounted(() => {
 }
 
 .shortcut {
-  font-size: 9px;
+  font-size: 11px;
   background: #f1f5f9;
   color: #64748b;
   padding: 2px 4px;
@@ -1309,7 +1309,7 @@ onUnmounted(() => {
 
 .form-header h4 {
   margin: 0;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: #1f2937;
 }

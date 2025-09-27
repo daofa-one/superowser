@@ -194,13 +194,13 @@ onUnmounted(() => {
 
 .notes-header h4 {
   margin: 0;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: #1f2937;
 }
 
 .notes-count {
-  font-size: 9px;
+  font-size: 11px;
   color: #64748b;
   background: #f1f5f9;
   border-radius: 4px;
@@ -234,6 +234,6 @@ onUnmounted(() => {
 }
 
 .empty-message {
-  font-size: 12px;
+  font-size: 14px;
 }
 </style>

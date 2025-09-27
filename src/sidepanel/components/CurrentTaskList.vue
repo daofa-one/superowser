@@ -706,7 +706,7 @@ onUnmounted(() => {
 
 .task-name {
   margin: 0;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: #1f2937;
   line-height: 1.3;
@@ -714,7 +714,7 @@ onUnmounted(() => {
 }
 
 .task-description {
-  font-size: 11px;
+  font-size: 13px;
   color: #64748b;
   line-height: 1.4;
   margin-bottom: 8px;
@@ -727,7 +727,7 @@ onUnmounted(() => {
 }
 
 .page-count {
-  font-size: 9px;
+  font-size: 11px;
   color: #64748b;
   background: #f1f5f9;
   padding: 2px 6px;
@@ -815,7 +815,7 @@ onUnmounted(() => {
 }
 
 .page-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   color: #1f2937;
   line-height: 1.1;
@@ -826,7 +826,7 @@ onUnmounted(() => {
 }
 
 .page-url {
-  font-size: 10px;
+  font-size: 12px;
   color: #3b82f6;
   line-height: 1.1;
   margin-bottom: 4px;
@@ -843,7 +843,7 @@ onUnmounted(() => {
 }
 
 .tag {
-  font-size: 9px;
+  font-size: 11px;
   background: #eff6ff;
   color: #1d4ed8;
   padding: 2px 4px;
