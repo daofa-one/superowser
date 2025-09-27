@@ -438,6 +438,16 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
         const result = await container.searchUseCases.executeOmniboxCommand(text);
 
         if (result.type === 'open' && result.page) {
+            // Record analytics for page access
+            container.analyticsService.recordAccess({
+                id: result.page.id,
+                type: 'page',
+                source: 'omnibox',
+                query: text,
+                context: {
+                    activeTask: container.analyticsService.getCurrentContext().activeTask
+                }
+            });
             await focusOrOpenUrl(result.page.url);
         } else if (result.type === 'task-activate') {
             const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -461,16 +471,39 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                         // Get the full page data
                         const page = await container.pageService.getById(singleResult.id);
                         if (page) {
+                            // Record analytics for search result access
+                            container.analyticsService.recordAccess({
+                                id: page.id,
+                                type: 'page',
+                                source: 'omnibox',
+                                query: text,
+                                context: {
+                                    activeTask: container.analyticsService.getCurrentContext().activeTask
+                                }
+                            });
                             await focusOrOpenUrl(page.url);
                         }
                     } else if (singleResult.type === 'note') {
                         // For note results, get the associated page if it exists
                         const note = await container.noteService.getById(singleResult.id);
-                        if (note && note.pageId) {
-                            const page = await container.pageService.getById(note.pageId);
-                            if (page) {
-                                await focusOrOpenUrl(page.url);
-                                return; // Exit early since we opened the page
+                        if (note) {
+                            // Record analytics for note access
+                            container.analyticsService.recordAccess({
+                                id: note.id,
+                                type: 'note',
+                                source: 'omnibox',
+                                query: text,
+                                context: {
+                                    activeTask: container.analyticsService.getCurrentContext().activeTask
+                                }
+                            });
+
+                            if (note.pageId) {
+                                const page = await container.pageService.getById(note.pageId);
+                                if (page) {
+                                    await focusOrOpenUrl(page.url);
+                                    return; // Exit early since we opened the page
+                                }
                             }
                         }
                         // If no page associated with note, show in side panel

@@ -14,6 +14,7 @@ import {
 import { fuzzyMatchScore } from '../../shared/utils'
 import { TaskUseCases } from './task-use-cases'
 import { FuzzySearchService } from '../services/fuzzy-search-service'
+import { AnalyticsService } from '../services/analytics-service'
 
 export class SearchUseCases {
   constructor(
@@ -22,7 +23,8 @@ export class SearchUseCases {
     private taskService: ITaskService,
     private searchService: ISearchService,
     private taskUseCases: TaskUseCases,
-    private fuzzySearchService: FuzzySearchService
+    private fuzzySearchService: FuzzySearchService,
+    private analyticsService: AnalyticsService
   ) {}
 
   async executeOmniboxCommand(input: string): Promise<{
@@ -40,6 +42,16 @@ export class SearchUseCases {
       const shortcut = trimmed.slice(1)
       const page = await this.pageService.getByShortcut(shortcut)
       if (page) {
+        // Record analytics for shortcut access
+        this.analyticsService.recordAccess({
+          id: page.id,
+          type: 'page',
+          source: 'omnibox',
+          query: input,
+          context: {
+            activeTask: this.analyticsService.getCurrentContext().activeTask
+          }
+        })
         return { type: 'open', page }
       } else {
         return { type: 'error', message: `No page found with shortcut @${shortcut}` }
@@ -132,6 +144,20 @@ export class SearchUseCases {
       }
 
       const activeTask = await this.taskUseCases.setActiveTask(targetTask.name)
+
+      // Record analytics for task activation
+      this.analyticsService.recordAccess({
+        id: activeTask.id,
+        type: 'task',
+        source: 'omnibox',
+        query: input,
+        context: {
+          activeTask: activeTask.name
+        }
+      })
+
+      // Update analytics context with new active task
+      this.analyticsService.setActiveTask(activeTask.name)
 
       const [pages, notes] = await Promise.all([
         this.pageService.getByTask(activeTask.name),
@@ -320,8 +346,16 @@ export class SearchUseCases {
 
       const lowerQuery = normalizedQuery
 
-      // Get shortcuts using Fuse.js
-      const shortcuts = lowerQuery
+      // Get current context for priority scoring
+      const currentContext = this.analyticsService.getCurrentContext()
+      const searchContext = {
+        activeTask: currentContext.activeTask,
+        recentTags: currentContext.recentTags,
+        query: lowerQuery
+      }
+
+      // Get shortcuts using Fuse.js with priority scoring
+      let shortcuts = lowerQuery
         ? this.fuzzySearchService.searchShortcuts(lowerQuery, 10)
         : pages
             .filter(p => p.shortcut)
@@ -329,22 +363,51 @@ export class SearchUseCases {
             .slice(0, 10)
             .map(p => ({ shortcut: p.shortcut!, page: p, score: 1 }))
 
+      // Apply priority scoring to shortcuts
+      shortcuts = shortcuts.map(item => ({
+        ...item,
+        priorityScore: this.analyticsService.calculatePriorityScore(
+          { id: item.page.id, type: 'page', tags: item.page.tags, tasks: item.page.tasks },
+          item.score,
+          searchContext
+        )
+      })).sort((a, b) => b.priorityScore - a.priorityScore)
+
       const shortcutPageIds = new Set(shortcuts.map(entry => entry.page.id))
 
-      // Get page matches using Fuse.js
-      const pageMatches = lowerQuery
+      // Get page matches using Fuse.js with priority scoring
+      let pageMatches = lowerQuery
         ? this.fuzzySearchService.searchPages(lowerQuery, 20)
             .filter(match => !shortcutPageIds.has(match.page.id))
-            .slice(0, 10)
         : pages
             .filter(page => !shortcutPageIds.has(page.id))
-            .slice(0, 10)
+            .slice(0, 20)
             .map(page => ({ page, score: 1 }))
 
-      // Search notes using Fuse.js
-      const noteMatches = lowerQuery
-        ? this.fuzzySearchService.searchNotes(lowerQuery, 10)
-        : allNotes.slice(0, 10).map(note => ({ note, score: 1 }))
+      // Apply priority scoring to pages
+      pageMatches = pageMatches.map(match => ({
+        ...match,
+        priorityScore: this.analyticsService.calculatePriorityScore(
+          { id: match.page.id, type: 'page', tags: match.page.tags, tasks: match.page.tasks },
+          match.score,
+          searchContext
+        )
+      })).sort((a, b) => b.priorityScore - a.priorityScore).slice(0, 10)
+
+      // Search notes using Fuse.js with priority scoring
+      let noteMatches = lowerQuery
+        ? this.fuzzySearchService.searchNotes(lowerQuery, 20)
+        : allNotes.slice(0, 20).map(note => ({ note, score: 1 }))
+
+      // Apply priority scoring to notes
+      noteMatches = noteMatches.map(match => ({
+        ...match,
+        priorityScore: this.analyticsService.calculatePriorityScore(
+          { id: match.note.id, type: 'note', tags: match.note.tags, tasks: match.note.tasks },
+          match.score,
+          searchContext
+        )
+      })).sort((a, b) => b.priorityScore - a.priorityScore).slice(0, 10)
 
       // Search tags using Fuse.js
       const tags = lowerQuery
@@ -367,13 +430,22 @@ export class SearchUseCases {
               }))
           })()
 
-      // Search tasks using Fuse.js
-      const taskNames = lowerQuery
-        ? this.fuzzySearchService.searchTasks(lowerQuery, 10).map(match => match.task.name)
-        : tasks
-            .map(t => t.name)
-            .sort((a, b) => a.localeCompare(b))
-            .slice(0, 10)
+      // Search tasks using Fuse.js with priority scoring
+      const taskMatches = lowerQuery
+        ? this.fuzzySearchService.searchTasks(lowerQuery, 20)
+        : tasks.slice(0, 20).map(task => ({ task, score: 1 }))
+
+      // Apply priority scoring to tasks
+      const prioritizedTasks = taskMatches.map(match => ({
+        ...match,
+        priorityScore: this.analyticsService.calculatePriorityScore(
+          { id: match.task.id, type: 'task' },
+          match.score,
+          searchContext
+        )
+      })).sort((a, b) => b.priorityScore - a.priorityScore).slice(0, 10)
+
+      const taskNames = prioritizedTasks.map(match => match.task.name)
 
       return {
         shortcuts,
