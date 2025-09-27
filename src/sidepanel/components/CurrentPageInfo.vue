@@ -37,6 +37,8 @@ const pageNotes = ref<NoteEntry[]>([])
 const includePageAssociation = ref(true)
 const selectedNoteTasks = ref<string[]>([])
 const noteTaskInput = ref('')
+const showNoteTaskSuggestions = ref(false)
+const filteredNoteTasks = ref<string[]>([])
 // Notes state is now handled by NotesList component
 
 const formatDateTime = (value?: Date | string) => {
@@ -325,7 +327,7 @@ const cancelTags = () => {
   currentTags.value = [...(currentPage.value?.tags || [])]
 }
 
-const toggleNoteForm = () => {
+const toggleNoteForm = async () => {
   showNoteForm.value = !showNoteForm.value
   if (showNoteForm.value) {
     showShortcutForm.value = false
@@ -336,6 +338,8 @@ const toggleNoteForm = () => {
     includePageAssociation.value = true
     selectedNoteTasks.value = [...(currentPage.value?.tasks || [])]
     noteTaskInput.value = ''
+    // Load available tasks
+    await loadAvailableTasks()
   }
 }
 
@@ -374,6 +378,42 @@ const resetNoteTasks = () => {
 const clearNoteTasks = () => {
   selectedNoteTasks.value = []
   noteTaskInput.value = ''
+}
+
+const filterNoteTasks = () => {
+  const query = noteTaskInput.value.toLowerCase()
+  if (!query) {
+    filteredNoteTasks.value = availableTasks.value.filter(task => !selectedNoteTasks.value.includes(task))
+  } else {
+    filteredNoteTasks.value = availableTasks.value.filter(task =>
+      task.toLowerCase().includes(query) && !selectedNoteTasks.value.includes(task)
+    )
+  }
+  showNoteTaskSuggestions.value = (filteredNoteTasks.value.length > 0 || noteTaskInput.value.length > 0) && noteTaskInput.value.length > 0
+}
+
+const selectNoteTask = (taskName: string) => {
+  if (!selectedNoteTasks.value.includes(taskName)) {
+    selectedNoteTasks.value.push(taskName)
+  }
+  noteTaskInput.value = ''
+  showNoteTaskSuggestions.value = false
+}
+
+const onNoteTaskInputChange = () => {
+  filterNoteTasks()
+}
+
+const onNoteTaskInputFocus = () => {
+  filterNoteTasks()
+  showNoteTaskSuggestions.value = filteredNoteTasks.value.length > 0
+}
+
+const onNoteTaskInputBlur = () => {
+  // Delay hiding suggestions to allow for clicks
+  setTimeout(() => {
+    showNoteTaskSuggestions.value = false
+  }, 200)
 }
 
 const saveNote = async () => {
@@ -898,13 +938,34 @@ onUnmounted(() => {
               <button type="button" class="btn btn-secondary" @click="clearNoteTasks">
                 Clear tasks
               </button>
-              <input
-                v-model="noteTaskInput"
-                type="text"
-                placeholder="Type to add task"
-                class="note-task-input"
-                @keyup.enter.prevent="noteTaskInput && addNoteTask(noteTaskInput)"
-              />
+              <div class="task-input-wrapper">
+                <input
+                  v-model="noteTaskInput"
+                  type="text"
+                  placeholder="Type to add task"
+                  class="note-task-input"
+                  autocomplete="off"
+                  @input="onNoteTaskInputChange"
+                  @focus="onNoteTaskInputFocus"
+                  @blur="onNoteTaskInputBlur"
+                  @keyup.enter.prevent="noteTaskInput && selectNoteTask(noteTaskInput)"
+                />
+
+                <!-- Task Suggestions Dropdown -->
+                <div v-if="showNoteTaskSuggestions" class="task-suggestions">
+                  <div
+                    v-for="task in filteredNoteTasks"
+                    :key="task"
+                    class="task-suggestion-item"
+                    @mousedown="selectNoteTask(task)"
+                  >
+                    📁 {{ task }}
+                  </div>
+                  <div v-if="noteTaskInput && !filteredNoteTasks.includes(noteTaskInput) && !selectedNoteTasks.includes(noteTaskInput)" class="task-suggestion-item create-new" @mousedown="selectNoteTask(noteTaskInput)">
+                    ➕ Create new task: "{{ noteTaskInput }}"
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1442,6 +1503,7 @@ onUnmounted(() => {
 }
 
 .task-chip-actions .task-input-wrapper {
+  position: relative;
   flex: 1;
   min-width: 100%;
   margin-top: 8px;
