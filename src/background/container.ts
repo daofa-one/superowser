@@ -21,6 +21,7 @@ import {
 } from '../shared/services/interfaces'
 import { fuzzyMatchScore } from '../shared/utils'
 import { TaskEntry } from '../shared/models'
+import { FuzzySearchService } from './services/fuzzy-search-service'
 
 // Simple search service implementation
 class SearchService implements ISearchService {
@@ -286,12 +287,14 @@ export class DIContainer {
   private _taskUseCases: TaskUseCases
   private _searchUseCases: SearchUseCases
   private _notesUseCases: NotesUseCases
+  private _fuzzySearchService: FuzzySearchService
 
   private constructor() {
     // Initialize services (repository layer)
     this._pageService = new DexiePageService()
     this._noteService = new DexieNoteService()
     this._taskService = new DexieTaskService()
+    this._fuzzySearchService = new FuzzySearchService()
     this._searchService = new SearchService(
       this._pageService,
       this._noteService,
@@ -316,7 +319,8 @@ export class DIContainer {
       this._noteService,
       this._taskService,
       this._searchService,
-      this._taskUseCases
+      this._taskUseCases,
+      this._fuzzySearchService
     )
 
     this._notesUseCases = new NotesUseCases(
@@ -353,7 +357,8 @@ export class DIContainer {
       this._noteService,
       this._taskService,
       this._searchService,
-      this._taskUseCases
+      this._taskUseCases,
+      this._fuzzySearchService
     )
 
     this._notesUseCases = new NotesUseCases(
@@ -395,5 +400,9 @@ export class DIContainer {
 
   get notesUseCases(): NotesUseCases {
     return this._notesUseCases
+  }
+
+  get fuzzySearchService(): FuzzySearchService {
+    return this._fuzzySearchService
   }
 }
