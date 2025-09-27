@@ -25,14 +25,22 @@ const sendRuntimeMessageSafe = (payload: any) => {
             const error = chrome.runtime.lastError
             if (error && error.message) {
                 const message = error.message
-                if (message.includes('Receiving end does not exist') || message.includes('Could not establish connection')) {
+                // Silently ignore common disconnection errors that are expected
+                if (message.includes('Receiving end does not exist') ||
+                    message.includes('Could not establish connection') ||
+                    message.includes('The message port closed before a response was received')) {
                     return
                 }
                 console.warn('[superowser] Failed to deliver runtime message:', message)
             }
         })
     } catch (error) {
-        console.warn('[superowser] Runtime message dispatch failed:', error)
+        // Only log unexpected errors, not connection issues
+        if (error instanceof Error &&
+            !error.message.includes('message port closed') &&
+            !error.message.includes('Receiving end does not exist')) {
+            console.warn('[superowser] Runtime message dispatch failed:', error)
+        }
     }
 }
 
@@ -109,8 +117,38 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
             const trimmed = text.trim();
             let omniboxSuggestions: chrome.omnibox.SuggestResult[] = [];
 
+            // Check for command input (starts with /)
+            if (trimmed.startsWith('/')) {
+                try {
+                    // Create command context for omnibox
+                    const commandContext = container.commandService.createContext('omnibox', {
+                        activeTask: container.analyticsService.getCurrentContext().activeTask,
+                        recentTags: container.analyticsService.getCurrentContext().recentTags
+                    })
+
+                    // Get command suggestions
+                    const suggestions = await container.commandService.getSuggestions(trimmed, commandContext)
+
+                    omniboxSuggestions = suggestions.map(suggestion => {
+                        const safeText = escapeForXML(suggestion.text)
+                        const safeDisplay = escapeForXML(suggestion.display)
+                        const safeDescription = escapeForXML(suggestion.description)
+
+                        return {
+                            content: suggestion.text,
+                            description: `<match>${safeDisplay}</match> - ${safeDescription}${suggestion.category ? ` | <dim>${suggestion.category}</dim>` : ''}`
+                        }
+                    })
+                } catch (commandError) {
+                    console.error('Error getting command suggestions:', commandError)
+                    omniboxSuggestions = [{
+                        content: trimmed,
+                        description: 'Error loading command suggestions'
+                    }]
+                }
+            }
             // Context-aware suggestions based on what user is typing
-            if (trimmed.startsWith('@')) {
+            else if (trimmed.startsWith('@')) {
                 // Shortcut suggestions with page info
                 const query = trimmed.slice(1);
                 try {
@@ -435,6 +473,96 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
 
 chrome.omnibox.onInputEntered.addListener(async (text) => {
     try {
+        // Check if this is a command (starts with /)
+        if (text.trim().startsWith('/')) {
+            const commandContext = container.commandService.createContext('omnibox', {
+                activeTask: container.analyticsService.getCurrentContext().activeTask,
+                recentTags: container.analyticsService.getCurrentContext().recentTags
+            })
+
+            const commandRequest = {
+                input: text.trim(),
+                context: commandContext,
+                timestamp: new Date()
+            }
+
+            const response = await container.commandService.processCommand(commandRequest)
+
+            // Handle command response
+            if (response.success) {
+                if (response.navigation) {
+                    // For navigation responses, we can't programmatically open the side panel
+                    // due to user gesture restrictions. Instead, we'll send the navigation
+                    // message to any already open side panel and show a helpful result.
+                    const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true })
+                    if (currentTab && currentTab.id) {
+                        // Send navigation message to any already open side panel
+                        sendRuntimeMessageSafe({
+                            type: 'COMMAND_NAVIGATION',
+                            data: {
+                                target: response.navigation.target,
+                                message: response.content,
+                                preserveCommand: response.navigation.preserveCommand
+                            }
+                        })
+
+                        // Also show a result in the omnibox result format
+                        sendRuntimeMessageSafe({
+                            type: 'OMNIBOX_RESULTS',
+                            data: {
+                                query: text,
+                                results: [{
+                                    type: 'command',
+                                    id: 'command-result',
+                                    title: response.content || 'Command executed',
+                                    snippet: 'Click extension icon to see changes in side panel',
+                                    score: 1,
+                                    tags: [],
+                                    tasks: []
+                                }]
+                            }
+                        })
+                    }
+
+                    const commandInput = text.trim()
+                    const [rawCommand, ...commandArgs] = commandInput.slice(1).split(/\s+/)
+                    const commandName = rawCommand?.toLowerCase()
+
+                    let chatContent = response.content || commandInput
+                    if (commandName === 'help' || commandName === '?' || commandName === 'h') {
+                        const helpTarget = commandArgs.join(' ') || undefined
+                        chatContent = container.commandService.getHelp(helpTarget) || chatContent
+                    }
+
+                    console.log('[Command Result][omnibox]', {
+                        command: commandName,
+                        args: commandArgs,
+                        content: chatContent
+                    })
+
+                    backgroundStore.addExtensionChat({
+                        content: chatContent,
+                        command: commandName,
+                        relatedTask: container.analyticsService.getCurrentContext().activeTask
+                    })
+                } else if (response.type === 'notification') {
+                    // Show notification (could be implemented as a badge or message)
+                    console.log('[Command Result]', response.content)
+
+                    backgroundStore.addExtensionChat({
+                        content: response.content || text,
+                        command: text.trim().startsWith('/') ? text.trim().slice(1).split(/\s+/)[0]?.toLowerCase() : undefined,
+                        relatedTask: container.analyticsService.getCurrentContext().activeTask
+                    })
+                }
+            } else {
+                console.error('[Command Error]', response.error?.message || 'Unknown error')
+            }
+
+            return // Exit early for commands
+        }
+
+        // Continue with existing omnibox command logic for @, #, &, !! syntax
         const result = await container.searchUseCases.executeOmniboxCommand(text);
 
         if (result.type === 'open' && result.page) {
@@ -790,6 +918,10 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
 
             case 'GET_CURRENT_TAB_INFO':
                 data = await getCurrentTab();
+                break;
+
+            case 'GET_EXTENSION_CHAT_HISTORY':
+                data = backgroundStore.user.extensionChatHistory;
                 break;
 
             case 'OPEN_PAGE':

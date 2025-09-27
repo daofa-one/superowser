@@ -256,6 +256,15 @@ function handleStateUpdate(message: StateUpdateMessage, store: any) {
       'background.browser.browserSearchHistory': 'recentSearches',
       'background.browser.browserChatHistory': 'recentChats',
       'background.browser.currentUrl': 'currentTabInfo.url',
+      // Direct broadcasts (without background prefix)
+      'user.currentTask': 'currentTask',
+      'user.previousTask': 'previousTask',
+      'user.workingSet': 'workingSet',
+      'user.extensionSearchHistory': 'recentSearches',
+      'user.extensionChatHistory': 'recentChats',
+      'browser.browserSearchHistory': 'recentSearches',
+      'browser.browserChatHistory': 'recentChats',
+      'browser.currentUrl': 'currentTabInfo.url'
     }
 
     const mappedPath = pathMappings[message.path]

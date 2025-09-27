@@ -11,5 +11,7 @@ import ChatBox from '../components/ChatBox.vue'
 <style scoped>
 .chat-view {
   padding: 16px;
+  height: 100%;
+  display: flex;
 }
 </style>

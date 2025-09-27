@@ -413,25 +413,26 @@ export const useBackgroundStore = defineStore('background', {
 
     // State broadcasting to side panel
     broadcastStateUpdate(path: string, value: any) {
-      try {
-        chrome.runtime.sendMessage({
-          type: 'STATE_UPDATE',
-          path,
-          value,
-          timestamp: new Date().toISOString()
-        }, () => {
-          const error = chrome.runtime.lastError
-          if (error && error.message) {
-            const message = error.message
-            if (message.includes('Receiving end does not exist') || message.includes('Could not establish connection')) {
-              return
-            }
-            console.warn('[Background Store] Failed to broadcast state update:', message)
-          }
-        })
-      } catch (error) {
-        console.warn('Failed to broadcast state update:', error)
-      }
+      chrome.runtime.sendMessage({
+        type: 'STATE_UPDATE',
+        path,
+        value,
+        timestamp: new Date().toISOString()
+      }, () => {
+        const error = chrome.runtime.lastError
+        if (!error || !error.message) {
+          return
+        }
+
+        const message = error.message
+        if (message.includes('Receiving end does not exist') ||
+            message.includes('Could not establish connection') ||
+            message.includes('The message port closed before a response was received')) {
+          return
+        }
+
+        console.warn('[Background Store] Failed to broadcast state update:', message)
+      })
     },
 
     // Working set management

@@ -24,6 +24,7 @@ import { TaskEntry } from '../shared/models'
 import { FuzzySearchService } from './services/fuzzy-search-service'
 import { AnalyticsService } from './services/analytics-service'
 import { MLService } from './services/ml-service'
+import { IntegratedCommandService } from './commands/integrated-command-service'
 
 // Simple search service implementation
 class SearchService implements ISearchService {
@@ -292,6 +293,7 @@ export class DIContainer {
   private _fuzzySearchService: FuzzySearchService
   private _analyticsService: AnalyticsService
   private _mlService: MLService
+  private _commandService!: IntegratedCommandService
 
   private constructor() {
     // Initialize services (repository layer)
@@ -301,6 +303,7 @@ export class DIContainer {
     this._fuzzySearchService = new FuzzySearchService()
     this._analyticsService = new AnalyticsService()
     this._mlService = new MLService()
+
     this._searchService = new SearchService(
       this._pageService,
       this._noteService,
@@ -335,6 +338,9 @@ export class DIContainer {
       this._noteService,
       this._taskService
     )
+
+    // Initialize command service last to avoid circular dependency issues
+    this._commandService = new IntegratedCommandService(this)
   }
 
   public static getInstance(): DIContainer {
@@ -422,5 +428,9 @@ export class DIContainer {
 
   get mlService(): MLService {
     return this._mlService
+  }
+
+  get commandService(): IntegratedCommandService {
+    return this._commandService
   }
 }

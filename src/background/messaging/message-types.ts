@@ -109,6 +109,10 @@ export interface GetCurrentTabInfoMessage extends BaseMessage {
   type: 'GET_CURRENT_TAB_INFO'
 }
 
+export interface GetExtensionChatHistoryMessage extends BaseMessage {
+  type: 'GET_EXTENSION_CHAT_HISTORY'
+}
+
 export interface OpenPageMessage extends BaseMessage {
   type: 'OPEN_PAGE'
   data: { url: string; newTab?: boolean }
@@ -191,6 +195,7 @@ export type RequestMessage =
   | UpdatePageMessage
   | DeletePageMessage
   | GetCurrentTabInfoMessage
+  | GetExtensionChatHistoryMessage
   | OpenPageMessage
   | GetSearchSuggestionsMessage
   | GetPopularTagsMessage

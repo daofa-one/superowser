@@ -17,15 +17,24 @@ export interface ExtensionSearchQuery {
 }
 
 export interface BrowserChatMessage {
+  id?: string
   content: string
   source: 'browser'
   timestamp: Date
+  platform?: 'chatgpt' | 'claude' | 'bard' | 'copilot' | 'other'
+  url?: string
+  conversationId?: string
+  role?: 'user' | 'assistant'
+  extractedFrom?: 'url' | 'dom'
 }
 
 export interface ExtensionChatMessage {
+  id?: string
   content: string
   source: 'extension'
   command?: string
+  relatedPages?: string[]
+  relatedTask?: string
   timestamp: Date
 }
 
@@ -464,6 +473,26 @@ export const useSidePanelStore = defineStore('sidepanel', {
         return
       }
 
+      const chatPaths = [
+        'user.extensionChatHistory',
+        'background.user.extensionChatHistory'
+      ]
+
+      if (chatPaths.includes(path)) {
+        const normalized = Array.isArray(value)
+          ? value.map((entry: any) => ({
+              ...entry,
+              timestamp: entry?.timestamp ? new Date(entry.timestamp) : new Date()
+            }))
+          : []
+        console.debug('[Sidepanel] Updated chat history', {
+          path,
+          count: normalized.length
+        })
+        this.cache.recentChats = normalized
+        return
+      }
+
       const directMappings: Record<string, keyof CachedState> = {
         'user.currentTask': 'currentTask',
         'user.previousTask': 'previousTask',
@@ -484,11 +513,18 @@ export const useSidePanelStore = defineStore('sidepanel', {
         }
 
         const [firstKey, ...remainingKeys] = rest
-        if (typeof (this.cache as any)[firstKey] === 'undefined') {
-          (this.cache as any)[firstKey] = {}
+        // Normalize legacy nested paths to cache keys
+        const cacheKeyMap: Record<string, keyof CachedState> = {
+          extensionChatHistory: 'recentChats',
+          extensionSearchHistory: 'recentSearches'
         }
 
-        let target = (this.cache as any)[firstKey]
+        const mappedKey = cacheKeyMap[firstKey] || firstKey
+        if (typeof (this.cache as any)[firstKey] === 'undefined') {
+          (this.cache as any)[mappedKey] = {}
+        }
+
+        let target = (this.cache as any)[mappedKey]
 
         for (let i = 0; i < remainingKeys.length - 1; i++) {
           const key = remainingKeys[i]
@@ -498,7 +534,8 @@ export const useSidePanelStore = defineStore('sidepanel', {
           target = target[key]
         }
 
-        target[remainingKeys[remainingKeys.length - 1]] = value
+        const finalKey = remainingKeys[remainingKeys.length - 1]
+        target[finalKey] = value
         return
       }
 
@@ -620,16 +657,23 @@ export const useSidePanelStore = defineStore('sidepanel', {
         }
 
         // Fetch initial shared state
-        const [currentTask, recentPages, currentTab] = await Promise.all([
+        const [currentTask, recentPages, currentTab, extensionChatHistory] = await Promise.all([
           this.sendMessage({ type: 'GET_ACTIVE_TASK' }),
           this.sendMessage({ type: 'GET_RECENT_PAGES' }),
-          this.sendMessage({ type: 'GET_CURRENT_TAB_INFO' })
+          this.sendMessage({ type: 'GET_CURRENT_TAB_INFO' }),
+          this.sendMessage({ type: 'GET_EXTENSION_CHAT_HISTORY' })
         ])
 
         // Update cache
         this.cache.currentTask = currentTask.data
         this.cache.recentPages = recentPages.data || []
         this.cache.currentTabInfo = currentTab.data
+        this.cache.recentChats = Array.isArray(extensionChatHistory.data)
+          ? extensionChatHistory.data.map((entry: any) => ({
+              ...entry,
+              timestamp: entry.timestamp ? new Date(entry.timestamp) : new Date()
+            }))
+          : []
 
       } catch (error) {
         console.error('Failed to initialize side panel store:', error)
