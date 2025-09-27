@@ -448,6 +448,22 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                     activeTask: container.analyticsService.getCurrentContext().activeTask
                 }
             });
+
+            // Track behavioral patterns for ML learning
+            await container.mlService.updateContentFeatures(
+                {
+                    id: result.page.id,
+                    type: 'page',
+                    title: result.page.title,
+                    content: result.page.url,
+                    tags: result.page.tags
+                },
+                {
+                    sessionLength: 5, // Quick access session
+                    timeOfDay: new Date().getHours(),
+                    dayOfWeek: new Date().getDay()
+                }
+            );
             await focusOrOpenUrl(result.page.url);
         } else if (result.type === 'task-activate') {
             const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
