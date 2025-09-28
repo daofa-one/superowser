@@ -1,10 +1,24 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useSidePanelStore } from '../stores/sidepanel-store'
-import type { NoteEntry } from '../../shared/models'
+import type { NoteEntry, NoteCategory } from '../../shared/models'
 import NotesList from './notes/NotesList.vue'
 
 const store = useSidePanelStore()
+
+const NOTE_CATEGORY_OPTIONS: Array<{ value: NoteCategory; label: string }> = [
+  { value: 'note', label: 'General note' },
+  { value: 'plan', label: 'Plan / blueprint' },
+  { value: 'brainstorm', label: 'Brainstorm' },
+  { value: 'highlight', label: 'Highlight' }
+]
+
+const normalizeNoteCategory = (value?: string | null): NoteCategory => {
+  const normalized = (value ?? 'note').toLowerCase()
+  return NOTE_CATEGORY_OPTIONS.some(option => option.value === normalized)
+    ? (normalized as NoteCategory)
+    : 'note'
+}
 
 // Current page data
 const currentPage = ref<{
@@ -39,6 +53,7 @@ const selectedNoteTasks = ref<string[]>([])
 const noteTaskInput = ref('')
 const showNoteTaskSuggestions = ref(false)
 const filteredNoteTasks = ref<string[]>([])
+const noteCategory = ref<NoteCategory>('note')
 // Notes state is now handled by NotesList component
 
 const formatDateTime = (value?: Date | string) => {
@@ -127,7 +142,8 @@ const loadCurrentPageInfo = async () => {
             notes = notesResponse.data.map((note: any) => ({
               ...note,
               createdAt: note.createdAt ? new Date(note.createdAt) : undefined,
-              updatedAt: note.updatedAt ? new Date(note.updatedAt) : undefined
+              updatedAt: note.updatedAt ? new Date(note.updatedAt) : undefined,
+              category: normalizeNoteCategory(note.category)
             }))
             noteCount = notes.length
           }
@@ -338,6 +354,7 @@ const toggleNoteForm = async () => {
     includePageAssociation.value = true
     selectedNoteTasks.value = [...(currentPage.value?.tasks || [])]
     noteTaskInput.value = ''
+    noteCategory.value = 'note'
     // Load available tasks
     await loadAvailableTasks()
   }
@@ -350,6 +367,7 @@ const cancelNote = () => {
   selectedNoteTasks.value = []
   includePageAssociation.value = true
   noteTaskInput.value = ''
+  noteCategory.value = 'note'
 }
 
 const normalizeTaskName = (name: string) => name.trim()
@@ -483,6 +501,8 @@ const saveNote = async () => {
     if (selectedNoteTasks.value.length > 0) {
       payload.tasks = selectedNoteTasks.value
     }
+
+    payload.category = noteCategory.value
 
     const response = await store.sendMessage({
       type: 'SAVE_NOTE',
@@ -900,6 +920,19 @@ onUnmounted(() => {
               class="note-comment-input"
               @keyup.escape="cancelNote"
             />
+          </div>
+
+          <div class="input-group">
+            <label for="note-category-select">Note type</label>
+            <select
+              id="note-category-select"
+              v-model="noteCategory"
+              class="note-category-select"
+            >
+              <option v-for="option in NOTE_CATEGORY_OPTIONS" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
           </div>
 
           <div class="input-group association-group">
@@ -1756,6 +1789,23 @@ onUnmounted(() => {
 }
 
 .note-comment-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.note-category-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  transition: border-color 0.2s;
+}
+
+.note-category-select:focus {
   outline: none;
   border-color: #007bff;
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);

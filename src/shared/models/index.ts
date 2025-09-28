@@ -13,6 +13,8 @@ export interface PageEntry {
   updatedAt: Date
 }
 
+export type NoteCategory = 'note' | 'plan' | 'brainstorm' | 'highlight'
+
 export interface NoteEntry {
   id: string
   pageId?: string    // optional - can be standalone note
@@ -20,6 +22,7 @@ export interface NoteEntry {
   comment?: string   // user's comment on the highlight
   tags: string[]     // removed in v3 migration - notes inherit tags from pages
   tasks: string[]    // array of &tasks for grouping (changed from single task)
+  category: NoteCategory
   position?: {       // position info for highlights
     start: number
     end: number
@@ -67,6 +70,7 @@ export interface SaveNoteRequest {
   comment?: string
   tags?: string[]
   tasks?: string[]   // changed from single task to array
+  category?: NoteCategory
   position?: {
     start: number
     end: number

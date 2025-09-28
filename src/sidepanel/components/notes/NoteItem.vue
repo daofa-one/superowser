@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import type { NoteEntry } from '../../../shared/models'
+import { computed } from 'vue'
+import type { NoteEntry, NoteCategory } from '../../../shared/models'
 import NoteEditForm from './NoteEditForm.vue'
 
 interface Props {
@@ -24,6 +24,16 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<Emits>()
+
+const CATEGORY_META: Record<NoteCategory, { label: string; icon: string; tone: 'default' | 'accent' }> = {
+  note: { label: 'Note', icon: '📝', tone: 'default' },
+  plan: { label: 'Plan', icon: '🧭', tone: 'accent' },
+  brainstorm: { label: 'Brainstorm', icon: '💡', tone: 'accent' },
+  highlight: { label: 'Highlight', icon: '🔖', tone: 'accent' }
+}
+
+const noteCategory = computed<NoteCategory>(() => (props.note.category ?? 'note') as NoteCategory)
+const noteCategoryMeta = computed(() => CATEGORY_META[noteCategory.value])
 
 const formatDateTime = (value?: Date | string) => {
   if (!value) return ''
@@ -62,6 +72,10 @@ const handleEditCancel = () => {
       <p v-if="note.comment" class="note-comment">💬 {{ note.comment }}</p>
 
       <div class="note-meta">
+        <span class="note-category" :class="['tone-' + noteCategoryMeta.tone]">
+          <span class="note-category-icon">{{ noteCategoryMeta.icon }}</span>
+          <span class="note-category-label">{{ noteCategoryMeta.label }}</span>
+        </span>
         <span class="note-timestamp">{{ formatDateTime(note.createdAt) }}</span>
 
         <div class="note-links">
@@ -137,6 +151,33 @@ const handleEditCancel = () => {
   align-items: center;
   font-size: 12px;
   color: #64748b;
+}
+
+.note-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 600;
+  font-size: 11px;
+  background: #e2e8f0;
+  color: #1f2937;
+}
+
+.note-category-icon {
+  display: inline-flex;
+  font-size: 12px;
+}
+
+.note-category.tone-accent {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.note-category.tone-default {
+  background: #f1f5f9;
+  color: #475569;
 }
 
 .note-timestamp {

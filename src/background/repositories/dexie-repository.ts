@@ -6,7 +6,8 @@ import {
   NoteEntry,
   TaskEntry,
   SavePageRequest,
-  SaveNoteRequest
+  SaveNoteRequest,
+  NoteCategory
 } from '../../shared/models'
 import {
   IPageService,
@@ -74,6 +75,18 @@ db.version(3).stores({
   })
 })
 
+// Version 4: Add note category metadata
+db.version(4).stores({
+  pages: '++id, url, title, *tags, shortcut, *tasks, createdAt, updatedAt',
+  notes: '++id, pageId, content, category, *tasks, createdAt, updatedAt',
+  tasks: '++id, name, isActive, createdAt, updatedAt',
+  settings: '++key'
+}).upgrade(trans => {
+  return trans.notes.toCollection().modify(note => {
+    note.category = normalizeNoteCategory((note as any).category)
+  })
+})
+
 // Utility functions
 const generateId = () => crypto.randomUUID()
 const now = () => new Date()
@@ -94,6 +107,22 @@ const normalizeKeyArray = (values?: string[] | null): string[] => {
 
   return Array.from(new Set(normalized))
 }
+
+const NOTE_CATEGORY_OPTIONS: NoteCategory[] = ['note', 'plan', 'brainstorm', 'highlight']
+
+const normalizeNoteCategory = (value?: string | null): NoteCategory => {
+  const normalized = (value ?? 'note').toLowerCase()
+  return NOTE_CATEGORY_OPTIONS.includes(normalized as NoteCategory)
+    ? normalized as NoteCategory
+    : 'note'
+}
+
+const mapNoteCategory = (note: NoteEntry | (NoteEntry & { category?: string; tags?: string[]; tasks?: string[] })): NoteEntry => ({
+  ...note,
+  tags: Array.isArray((note as any).tags) ? (note as any).tags : [],
+  tasks: Array.isArray((note as any).tasks) ? (note as any).tasks : [],
+  category: normalizeNoteCategory((note as any).category)
+})
 
 export class DexiePageService implements IPageService {
   async save(request: SavePageRequest): Promise<PageEntry> {
@@ -209,6 +238,7 @@ export class DexieNoteService implements INoteService {
       comment: request.comment,
       tags: [], // Always empty after migration
       tasks: normalizedTasks,
+      category: normalizeNoteCategory(request.category),
       position: request.position,
       createdAt: now(),
       updatedAt: now()
@@ -219,11 +249,13 @@ export class DexieNoteService implements INoteService {
   }
 
   async getById(id: string): Promise<NoteEntry | null> {
-    return await db.notes.get(id) || null
+    const raw = await db.notes.get(id)
+    return raw ? mapNoteCategory(raw) : null
   }
 
   async getByPageId(pageId: string): Promise<NoteEntry[]> {
-    return await db.notes.where('pageId').equals(pageId).toArray()
+    const notes = await db.notes.where('pageId').equals(pageId).toArray()
+    return notes.map(mapNoteCategory)
   }
 
   async getByTask(task: string): Promise<NoteEntry[]> {
@@ -231,7 +263,8 @@ export class DexieNoteService implements INoteService {
     if (!normalized) {
       return []
     }
-    return await db.notes.where('tasks').anyOf([normalized]).toArray()
+    const notes = await db.notes.where('tasks').anyOf([normalized]).toArray()
+    return notes.map(mapNoteCategory)
   }
 
   async getByTags(_tags: string[]): Promise<NoteEntry[]> {
@@ -247,6 +280,10 @@ export class DexieNoteService implements INoteService {
 
     if (updates?.tasks) {
       payload.tasks = normalizeKeyArray(updates.tasks)
+    }
+
+    if (updates && 'category' in updates) {
+      payload.category = normalizeNoteCategory(updates.category as string)
     }
 
     await db.notes.update(id, payload)
@@ -269,7 +306,7 @@ export class DexieNoteService implements INoteService {
       return this.getAll()
     }
 
-    return await db.notes
+    const notes = await db.notes
       .filter(note =>
         searchTerms.every(term =>
           note.content.toLowerCase().includes(term) ||
@@ -277,15 +314,18 @@ export class DexieNoteService implements INoteService {
         )
       )
       .toArray()
+
+    return notes.map(mapNoteCategory)
   }
 
   async getAll(limit = 1000, offset = 0): Promise<NoteEntry[]> {
-    return await db.notes
+    const notes = await db.notes
       .orderBy('updatedAt')
       .reverse()
       .offset(offset)
       .limit(limit)
       .toArray()
+    return notes.map(mapNoteCategory)
   }
 }
 

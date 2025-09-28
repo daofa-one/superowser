@@ -83,6 +83,7 @@ export interface UserContextState {
     autoDetectSearchQueries: boolean
     autoDetectChatMessages: boolean
     preferredSearchEngine: string
+    preferredAiProvider: string
   }
 
   // Analytics/insights
@@ -134,7 +135,8 @@ export const useBackgroundStore = defineStore('background', {
         maxChatHistory: 1000,
         autoDetectSearchQueries: true,
         autoDetectChatMessages: true,
-        preferredSearchEngine: 'google'
+        preferredSearchEngine: 'google',
+        preferredAiProvider: 'chatgpt'
       },
 
       stats: {
@@ -217,6 +219,10 @@ export const useBackgroundStore = defineStore('background', {
             ...this.user.settings,
             ...stored
           }
+
+          if (!this.user.settings.preferredAiProvider) {
+            this.user.settings.preferredAiProvider = 'chatgpt'
+          }
           this.broadcastStateUpdate('user.settings', this.user.settings)
         }
       } catch (error) {
@@ -241,6 +247,28 @@ export const useBackgroundStore = defineStore('background', {
         await chrome.storage.local.set({ userSettings: this.user.settings })
       } catch (error) {
         console.warn('[Background Store] Failed to persist user settings:', error)
+      }
+
+      this.broadcastStateUpdate('user.settings', this.user.settings)
+    },
+
+    async setPreferredAiProvider(provider: string) {
+      const normalized = (provider || '').toLowerCase()
+      const allowedProviders = ['chatgpt', 'claude', 'perplexity', 'copilot', 'gemini']
+      if (!allowedProviders.includes(normalized)) {
+        throw new Error(`Unsupported AI provider: ${provider}`)
+      }
+
+      if (this.user.settings.preferredAiProvider === normalized) {
+        return
+      }
+
+      this.user.settings.preferredAiProvider = normalized
+
+      try {
+        await chrome.storage.local.set({ userSettings: this.user.settings })
+      } catch (error) {
+        console.warn('[Background Store] Failed to persist AI provider setting:', error)
       }
 
       this.broadcastStateUpdate('user.settings', this.user.settings)

@@ -42,6 +42,7 @@ export class IntegratedCommandService extends CommandService {
       { name: 'tasks', factory: () => this.createIntegratedTasksCommand() },
       { name: 'newtask', factory: () => this.createIntegratedNewTaskCommand() },
       { name: 'search', factory: () => this.createIntegratedSearchCommand() },
+      { name: 'ai', factory: () => this.createIntegratedAiCommand() },
       { name: 'save', factory: () => this.createIntegratedSaveCommand() },
       { name: 'open', factory: () => this.createIntegratedOpenCommand() },
       { name: 'notes', factory: () => this.createIntegratedNotesCommand() },
@@ -135,6 +136,119 @@ export class IntegratedCommandService extends CommandService {
 
         return CommandExecutor.createSuccessResponse('text', confirmation, {
           followUp: [`/search --engine=${engineKey} ${query} site:`, '/search <new query>']
+        })
+      }
+    }
+  }
+
+  private createIntegratedAiCommand(): CommandDefinition {
+    const providers: Record<string, { label: string; buildUrl: (query?: string) => string; supportsQuery?: boolean }> = {
+      chatgpt: {
+        label: 'ChatGPT',
+        buildUrl: (query) => query && query.length > 0
+          ? `https://chatgpt.com/?q=${encodeURIComponent(query)}`
+          : 'https://chatgpt.com/',
+        supportsQuery: true
+      },
+      claude: {
+        label: 'Claude',
+        buildUrl: () => 'https://claude.ai/new',
+        supportsQuery: false
+      },
+      perplexity: {
+        label: 'Perplexity',
+        buildUrl: (query) => query && query.length > 0
+          ? `https://www.perplexity.ai/search?q=${encodeURIComponent(query)}`
+          : 'https://www.perplexity.ai/'
+      },
+      copilot: {
+        label: 'Copilot',
+        buildUrl: (query) => query && query.length > 0
+          ? `https://copilot.microsoft.com/?q=${encodeURIComponent(query)}`
+          : 'https://copilot.microsoft.com/'
+      },
+      gemini: {
+        label: 'Gemini',
+        buildUrl: (query) => query && query.length > 0
+          ? `https://gemini.google.com/app?q=${encodeURIComponent(query)}`
+          : 'https://gemini.google.com/app'
+      }
+    }
+
+    return {
+      name: 'ai',
+      aliases: ['assistant', 'chatgpt'],
+      description: 'Open your preferred AI assistant in a new tab',
+      category: 'navigation',
+      parameters: [
+        {
+          name: 'query',
+          type: 'string',
+          required: false,
+          description: 'Prompt or topic to discuss'
+        },
+        {
+          name: 'provider',
+          type: 'string',
+          required: false,
+          description: 'AI provider (chatgpt, claude, perplexity, copilot, gemini)',
+          validation: {
+            pattern: /^(chatgpt|claude|perplexity|copilot|gemini)$/i
+          }
+        }
+      ],
+      examples: [
+        '/ai brainstorming research outline',
+        '/ai --provider=claude market analysis plan'
+      ],
+      minParameters: 0,
+
+      execute: async (params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> => {
+        const queryTokens = params._positional.length > 0
+          ? params._positional
+          : (params.query ? [params.query as string] : [])
+
+        const query = queryTokens.join(' ').trim()
+
+        const defaultProvider = (this.container.backgroundStore?.user?.settings?.preferredAiProvider || 'chatgpt').toLowerCase()
+        const providerParam = (params.provider as string | undefined)?.toLowerCase()
+        const providerKey = providers[providerParam ?? defaultProvider]
+          ? (providerParam ?? defaultProvider)
+          : 'chatgpt'
+
+        const provider = providers[providerKey]
+        const url = provider.buildUrl(query)
+
+        try {
+          await chrome.tabs.create({ url })
+        } catch (error) {
+          return CommandExecutor.createErrorResponse(
+            'Unable to open assistant in a new tab',
+            'AI_NAVIGATION_FAILED',
+            'Check browser permissions and try again'
+          )
+        }
+
+        const providerLabel = provider.label
+        const baseMessage = query
+          ? `Opened ${providerLabel} for "${query}"`
+          : `Opened ${providerLabel}`
+
+        const additional = query && provider.supportsQuery === false
+          ? '\n⚠️ This assistant does not accept prompts via URL. Paste your prompt after the page loads.'
+          : ''
+
+        const message = `${baseMessage}${additional}`
+
+        if (context.source === 'omnibox') {
+          return CommandExecutor.createSuccessResponse('text', message)
+        }
+
+        return CommandExecutor.createSuccessResponse('text', message, {
+          followUp: [
+            '/notes --task',
+            '/ai new idea'
+          ]
         })
       }
     }

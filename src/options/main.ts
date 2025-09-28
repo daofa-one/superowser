@@ -2,6 +2,7 @@ import './style.css'
 
 type UserSettings = {
   preferredSearchEngine?: string
+  preferredAiProvider?: string
 }
 
 type SuccessResponse<T> = {
@@ -17,16 +18,22 @@ type ErrorResponse = {
 type RuntimeResponse<T> = SuccessResponse<T> | ErrorResponse
 
 const engineSelect = document.getElementById('search-engine-select') as HTMLSelectElement | null
-const statusMessage = document.getElementById('status-message') as HTMLParagraphElement | null
+const engineStatusMessage = document.getElementById('search-status-message') as HTMLParagraphElement | null
+const aiSelect = document.getElementById('ai-provider-select') as HTMLSelectElement | null
+const aiStatusMessage = document.getElementById('ai-status-message') as HTMLParagraphElement | null
 
 if (!engineSelect) {
   throw new Error('Search engine select element not found')
 }
 
-const showStatus = (message: string, tone: 'info' | 'success' | 'error' = 'info') => {
-  if (!statusMessage) return
-  statusMessage.textContent = message
-  statusMessage.dataset.tone = tone
+if (!aiSelect) {
+  throw new Error('AI provider select element not found')
+}
+
+const showStatus = (element: HTMLParagraphElement | null, message: string, tone: 'info' | 'success' | 'error' = 'info') => {
+  if (!element) return
+  element.textContent = message
+  element.dataset.tone = tone
 }
 
 const sendMessage = async <T>(request: any): Promise<T> => {
@@ -56,10 +63,17 @@ const loadSettings = async () => {
     const settings = await sendMessage<UserSettings>({ type: 'GET_USER_SETTINGS' })
     const preferred = (settings.preferredSearchEngine || 'google').toLowerCase()
     engineSelect.value = ['google', 'duckduckgo', 'bing'].includes(preferred) ? preferred : 'google'
+
+    const preferredAi = (settings.preferredAiProvider || 'chatgpt').toLowerCase()
+    aiSelect.value = ['chatgpt', 'claude', 'perplexity', 'copilot', 'gemini'].includes(preferredAi)
+      ? preferredAi
+      : 'chatgpt'
   } catch (error) {
     console.error('[Options] Failed to load settings:', error)
-    showStatus('Could not load settings. Using defaults.', 'error')
+    showStatus(engineStatusMessage, 'Could not load settings. Using defaults.', 'error')
     engineSelect.value = 'google'
+    showStatus(aiStatusMessage, 'Could not load assistant setting. Using ChatGPT.', 'error')
+    aiSelect.value = 'chatgpt'
   }
 }
 
@@ -69,10 +83,10 @@ const persistSettings = async (engine: string) => {
       type: 'UPDATE_USER_SETTINGS',
       data: { preferredSearchEngine: engine }
     })
-    showStatus(`Saved. /search will use ${engine} by default.`, 'success')
+    showStatus(engineStatusMessage, `Saved. /search will use ${engine} by default.`, 'success')
   } catch (error) {
     console.error('[Options] Failed to save settings:', error)
-    showStatus('Failed to save setting. Please try again.', 'error')
+    showStatus(engineStatusMessage, 'Failed to save setting. Please try again.', 'error')
   }
 }
 
@@ -80,6 +94,26 @@ engineSelect.addEventListener('change', (event) => {
   const target = event.target as HTMLSelectElement
   const value = target.value
   persistSettings(value)
+})
+
+const persistAiProvider = async (provider: string) => {
+  try {
+    await sendMessage<UserSettings>({
+      type: 'UPDATE_USER_SETTINGS',
+      data: { preferredAiProvider: provider }
+    })
+    const label = provider.charAt(0).toUpperCase() + provider.slice(1)
+    showStatus(aiStatusMessage, `Saved. /ai will open ${label}.`, 'success')
+  } catch (error) {
+    console.error('[Options] Failed to save AI provider:', error)
+    showStatus(aiStatusMessage, 'Failed to save assistant. Please try again.', 'error')
+  }
+}
+
+aiSelect.addEventListener('change', (event) => {
+  const target = event.target as HTMLSelectElement
+  const value = target.value
+  persistAiProvider(value)
 })
 
 loadSettings()

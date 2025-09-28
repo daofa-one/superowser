@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import type { NoteEntry } from '../../../shared/models'
+import type { NoteEntry, NoteCategory } from '../../../shared/models'
 import { useSidePanelStore } from '../../stores/sidepanel-store'
 
 interface Props {
@@ -17,6 +17,13 @@ const emit = defineEmits<Emits>()
 
 const store = useSidePanelStore()
 
+const NOTE_CATEGORY_OPTIONS: Array<{ value: NoteCategory; label: string }> = [
+  { value: 'note', label: 'General note' },
+  { value: 'plan', label: 'Plan / blueprint' },
+  { value: 'brainstorm', label: 'Brainstorm' },
+  { value: 'highlight', label: 'Highlight' }
+]
+
 // Form state
 const editNoteContent = ref('')
 const editNoteComment = ref('')
@@ -24,6 +31,7 @@ const editIncludePageAssociation = ref(true)
 const editSelectedNoteTasks = ref<string[]>([])
 const editNoteTaskInput = ref('')
 const associatedPage = ref<{ id: string; title: string; url: string } | null>(null)
+const editNoteCategory = ref<NoteCategory>('note')
 
 // Task management
 const availableTasks = ref<string[]>([])
@@ -36,6 +44,7 @@ onMounted(async () => {
   editNoteComment.value = props.note.comment || ''
   editIncludePageAssociation.value = !!props.note.pageId
   editSelectedNoteTasks.value = [...(props.note.tasks || [])]
+  editNoteCategory.value = (props.note.category ?? 'note') as NoteCategory
 
   // Load associated page if exists
   if (props.note.pageId) {
@@ -167,6 +176,8 @@ const saveEditedNote = async () => {
     // Handle task associations
     updates.tasks = editSelectedNoteTasks.value
 
+    updates.category = editNoteCategory.value
+
     const response = await store.sendMessage({
       type: 'UPDATE_NOTE',
       data: {
@@ -222,6 +233,19 @@ const cancelEdit = () => {
         class="edit-note-comment-input"
         @keyup.escape="cancelEdit"
       />
+    </div>
+
+    <div class="edit-form-group">
+      <label for="edit-note-category">Note type</label>
+      <select
+        id="edit-note-category"
+        v-model="editNoteCategory"
+        class="edit-note-category-select"
+      >
+        <option v-for="option in NOTE_CATEGORY_OPTIONS" :key="option.value" :value="option.value">
+          {{ option.label }}
+        </option>
+      </select>
     </div>
 
     <div class="edit-form-group association-group">
@@ -365,6 +389,23 @@ const cancelEdit = () => {
 }
 
 .edit-note-comment-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.edit-note-category-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  transition: border-color 0.2s;
+}
+
+.edit-note-category-select:focus {
   outline: none;
   border-color: #007bff;
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);

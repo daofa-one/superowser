@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useSidePanelStore } from '../stores/sidepanel-store'
-import type { NoteEntry, PageEntry } from '../../shared/models'
+import type { NoteEntry, PageEntry, NoteCategory } from '../../shared/models'
 import NotesList from '../components/notes/NotesList.vue'
 
 const store = useSidePanelStore()
@@ -15,6 +15,72 @@ const filterTag = ref('')
 const filterTask = ref('')
 const availableTags = ref<string[]>([])
 const availableTasks = ref<string[]>([])
+const availableCategories = ref<NoteCategory[]>([])
+const filterCategory = ref<NoteCategory | ''>('')
+
+type FilterTabId = 'tags' | 'category' | 'tasks'
+const activeFilterTab = ref<FilterTabId | null>('tags')
+
+const NOTE_CATEGORY_ORDER: NoteCategory[] = ['note', 'plan', 'brainstorm', 'highlight']
+
+const NOTE_CATEGORY_LABELS: Record<NoteCategory, string> = {
+  note: 'General note',
+  plan: 'Plan / blueprint',
+  brainstorm: 'Brainstorm',
+  highlight: 'Highlight'
+}
+
+const normalizeCategory = (value?: string | null): NoteCategory => {
+  const normalized = (value ?? 'note').toLowerCase()
+  return NOTE_CATEGORY_ORDER.includes(normalized as NoteCategory)
+    ? (normalized as NoteCategory)
+    : 'note'
+}
+
+const filterTabs = computed(() => {
+  return [
+    {
+      id: 'tags' as FilterTabId,
+      label: 'Tags',
+      hasValue: Boolean(filterTag.value),
+      disabled: availableTags.value.length === 0 && !filterTag.value
+    },
+    {
+      id: 'category' as FilterTabId,
+      label: 'Type',
+      hasValue: Boolean(filterCategory.value),
+      disabled: availableCategories.value.length === 0 && !filterCategory.value
+    },
+    {
+      id: 'tasks' as FilterTabId,
+      label: 'Tasks',
+      hasValue: Boolean(filterTask.value),
+      disabled: availableTasks.value.length === 0 && !filterTask.value
+    }
+  ]
+})
+
+const toggleFilterTab = (tabId: FilterTabId) => {
+  const tab = filterTabs.value.find(entry => entry.id === tabId)
+  if (!tab || (tab.disabled && !tab.hasValue)) {
+    return
+  }
+  activeFilterTab.value = activeFilterTab.value === tabId ? null : tabId
+}
+
+watch(filterTabs, (tabs) => {
+  if (activeFilterTab.value) {
+    const active = tabs.find(tab => tab.id === activeFilterTab.value)
+    if (!active || (active.disabled && !active.hasValue)) {
+      activeFilterTab.value = null
+    }
+  }
+
+  if (!activeFilterTab.value) {
+    const fallback = tabs.find(tab => tab.hasValue) || tabs.find(tab => !tab.disabled)
+    activeFilterTab.value = fallback ? fallback.id : null
+  }
+}, { immediate: true })
 
 const normalizeTag = (tag: string): string | null => {
   const trimmed = tag.trim()
@@ -56,6 +122,11 @@ const buildQueryTokens = (input: string): string[] => {
 
   if (trimmed.startsWith('@')) {
     tokens.add(trimmed.slice(1))
+  }
+
+  const normalizedCategory = NOTE_CATEGORY_ORDER.find(category => trimmed.includes(category))
+  if (normalizedCategory) {
+    tokens.add(normalizedCategory)
   }
 
   return Array.from(tokens).filter(Boolean)
@@ -107,6 +178,7 @@ const filteredNotes = computed(() => {
       const noteComment = note.comment ? note.comment.toLowerCase() : ''
       const noteTasks = toTaskList(note.tasks).map(task => task.toLowerCase())
       const noteTags = toTagList(note.tags).map(tag => tag.toLowerCase())
+      const noteCategory = normalizeCategory(note.category).toLowerCase()
 
       const matchesContent = tokens.some(token =>
         noteContent.includes(token) ||
@@ -128,7 +200,9 @@ const filteredNotes = computed(() => {
         pageTags.some(tag => tag.includes(token))
       )
 
-      return matchesContent || matchesTasks || matchesNoteTags || matchesPageTags
+      const matchesCategory = tokens.some(token => noteCategory.includes(token))
+
+      return matchesContent || matchesTasks || matchesNoteTags || matchesPageTags || matchesCategory
     })
   }
 
@@ -150,6 +224,10 @@ const filteredNotes = computed(() => {
     })
   }
 
+  if (filterCategory.value) {
+    result = result.filter(note => normalizeCategory(note.category) === filterCategory.value)
+  }
+
   return result
 })
 
@@ -167,10 +245,23 @@ const loadAllNotes = async () => {
     })
 
     if (response?.type === 'SUCCESS' && response.data) {
-      // Response data is already an array of NoteEntry objects
-      notes.value = response.data.sort((a: NoteEntry, b: NoteEntry) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      )
+      const categorySet = new Set<NoteCategory>()
+
+      notes.value = response.data
+        .map((note: NoteEntry) => {
+          const category = normalizeCategory(note.category)
+          categorySet.add(category)
+
+          return {
+            ...note,
+            category,
+            createdAt: note.createdAt ? new Date(note.createdAt) : new Date(),
+            updatedAt: note.updatedAt ? new Date(note.updatedAt) : new Date()
+          }
+        })
+        .sort((a: NoteEntry, b: NoteEntry) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )
 
       // Load pages for notes that have page associations
       const pageIds = [...new Set(notes.value.map(note => note.pageId).filter(Boolean))]
@@ -213,6 +304,12 @@ const loadAllNotes = async () => {
           pageTags.forEach(tag => allTags.add(tag))
         }
       })
+
+      const sortedCategories = Array.from(categorySet).sort((a, b) => {
+        return NOTE_CATEGORY_ORDER.indexOf(a) - NOTE_CATEGORY_ORDER.indexOf(b)
+      })
+
+      availableCategories.value = sortedCategories
 
       try {
         // Merge with background's popular tag stats to backfill legacy data
@@ -265,6 +362,9 @@ const clearFilters = () => {
   searchQuery.value = ''
   filterTag.value = ''
   filterTask.value = ''
+  filterCategory.value = ''
+  const fallback = filterTabs.value.find(tab => tab.hasValue) || filterTabs.value.find(tab => !tab.disabled)
+  activeFilterTab.value = fallback ? fallback.id : null
 }
 
 const exportNotes = () => {
@@ -354,7 +454,7 @@ onUnmounted(() => {
           class="search-input"
         />
         <button
-          v-if="searchQuery || filterTag || filterTask"
+          v-if="searchQuery || filterTag || filterTask || filterCategory"
           class="btn btn-secondary btn-small"
           @click="clearFilters"
         >
@@ -362,20 +462,68 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <div class="filter-row">
-        <select v-model="filterTag" class="filter-select">
-          <option value="">All tags</option>
-          <option v-for="tag in availableTags" :key="tag" :value="tag" :title="`#${tag}`">
-            #{{ tag.length > 20 ? tag.slice(0, 20) + '...' : tag }}
-          </option>
-        </select>
+      <div class="filter-controls">
+        <div class="filter-tabs" role="tablist" aria-label="Notes filters">
+          <button
+            v-for="tab in filterTabs"
+            :key="tab.id"
+            type="button"
+            class="filter-tab"
+            :class="{ active: tab.id === activeFilterTab, 'has-value': tab.hasValue }"
+            :disabled="tab.disabled && !tab.hasValue"
+            :aria-pressed="tab.id === activeFilterTab"
+            @click="toggleFilterTab(tab.id)"
+          >
+            <span class="tab-label">{{ tab.label }}</span>
+            <span v-if="tab.hasValue" class="tab-indicator" aria-hidden="true"></span>
+          </button>
+        </div>
 
-        <select v-model="filterTask" class="filter-select">
-          <option value="">All tasks</option>
-          <option v-for="task in availableTasks" :key="task" :value="task" :title="`&${task}`">
-            &{{ task.length > 20 ? task.slice(0, 20) + '...' : task }}
-          </option>
-        </select>
+        <div v-if="activeFilterTab === 'tags'" class="filter-panel">
+          <label class="filter-panel-label" for="notes-filter-tags">Filter by tag</label>
+          <select
+            id="notes-filter-tags"
+            v-model="filterTag"
+            class="filter-select"
+          >
+            <option value="">All tags</option>
+            <option v-for="tag in availableTags" :key="tag" :value="tag" :title="`#${tag}`">
+              #{{ tag.length > 20 ? tag.slice(0, 20) + '...' : tag }}
+            </option>
+          </select>
+        </div>
+
+        <div v-else-if="activeFilterTab === 'category'" class="filter-panel">
+          <label class="filter-panel-label" for="notes-filter-category">Filter by type</label>
+          <select
+            id="notes-filter-category"
+            v-model="filterCategory"
+            class="filter-select"
+          >
+            <option value="">All types</option>
+            <option
+              v-for="category in availableCategories"
+              :key="category"
+              :value="category"
+            >
+              {{ NOTE_CATEGORY_LABELS[category] }}
+            </option>
+          </select>
+        </div>
+
+        <div v-else-if="activeFilterTab === 'tasks'" class="filter-panel">
+          <label class="filter-panel-label" for="notes-filter-task">Filter by task</label>
+          <select
+            id="notes-filter-task"
+            v-model="filterTask"
+            class="filter-select"
+          >
+            <option value="">All tasks</option>
+            <option v-for="task in availableTasks" :key="task" :value="task" :title="`&${task}`">
+              &{{ task.length > 20 ? task.slice(0, 20) + '...' : task }}
+            </option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -490,14 +638,75 @@ onUnmounted(() => {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
-.filter-row {
+.filter-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-tabs {
   display: flex;
   gap: 8px;
+}
+
+.filter-tab {
+  flex: 1;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.filter-tab:hover:not(:disabled) {
+  border-color: #3b82f6;
+}
+
+.filter-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.filter-tab.active {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #ffffff;
+}
+
+.filter-tab.has-value:not(.active) {
+  border-color: #1d4ed8;
+  color: #1d4ed8;
+}
+
+.tab-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-panel-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
 }
 
 .filter-select {
-  flex: 1;
+  width: 100%;
   padding: 8px 12px;
   border: 1px solid #d1d5db;
   border-radius: 6px;

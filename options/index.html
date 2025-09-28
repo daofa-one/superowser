@@ -23,7 +23,23 @@
             <option value="bing">Bing</option>
           </select>
         </label>
-        <p id="status-message" class="status"></p>
+        <p id="search-status-message" class="status"></p>
+      </section>
+
+      <section class="options-section">
+        <h2>Assistant</h2>
+        <p class="section-description">Choose the AI assistant opened when you run the <code>/ai</code> command.</p>
+        <label class="field">
+          <span class="field-label">Default assistant</span>
+          <select id="ai-provider-select" class="field-control">
+            <option value="chatgpt">ChatGPT</option>
+            <option value="claude">Claude</option>
+            <option value="perplexity">Perplexity</option>
+            <option value="copilot">Copilot</option>
+            <option value="gemini">Gemini</option>
+          </select>
+        </label>
+        <p id="ai-status-message" class="status"></p>
       </section>
     </div>
 

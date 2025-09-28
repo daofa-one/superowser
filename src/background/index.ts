@@ -999,6 +999,9 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 if (message.data?.preferredSearchEngine) {
                     await backgroundStore.setPreferredSearchEngine(message.data.preferredSearchEngine);
                 }
+                if (message.data?.preferredAiProvider) {
+                    await backgroundStore.setPreferredAiProvider(message.data.preferredAiProvider);
+                }
                 data = backgroundStore.user.settings;
                 break;
 
