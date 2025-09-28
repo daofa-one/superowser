@@ -325,7 +325,7 @@ export class IntegratedCommandService extends CommandService {
           name: 'limit',
           type: 'number',
           required: false,
-          description: 'Maximum number of notes to show',
+          description: 'Maximum number of notes to show (default 10, max 50)',
           defaultValue: 10
         }
       ],
@@ -341,7 +341,8 @@ export class IntegratedCommandService extends CommandService {
           const taskName = params.task as string
           const tag = params.tag as string
           const searchTerm = params.search as string
-          const limit = (params.limit as number) || 10
+          const rawLimit = typeof params.limit === 'number' ? params.limit : undefined
+          const limit = Math.min(Math.max(rawLimit ?? 10, 1), 50)
 
           let notes = []
 
@@ -666,8 +667,8 @@ export class IntegratedCommandService extends CommandService {
           name: 'limit',
           type: 'number',
           required: false,
-          description: 'Maximum number of tasks to show',
-          defaultValue: 20
+          description: 'Maximum number of tasks to show (default 10, max 50)',
+          defaultValue: 10
         }
       ],
       examples: [
@@ -679,7 +680,8 @@ export class IntegratedCommandService extends CommandService {
       execute: async (params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> => {
         try {
           const searchTerm = params.search
-          const limit = params.limit || 20
+          const rawLimit = typeof params.limit === 'number' ? params.limit : undefined
+          const limit = Math.min(Math.max(rawLimit ?? 10, 1), 50)
 
           // Get tasks using real task service
           let tasks = await this.container.taskService.getAll()
