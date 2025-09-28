@@ -110,6 +110,14 @@ chrome.runtime.onInstalled.addListener(() => {
     console.log('[superowser] installed');
 });
 
+chrome.tabs.onRemoved.addListener((tabId) => {
+    try {
+        backgroundStore.clearSearchTabById?.(tabId)
+    } catch (error) {
+        console.warn('Failed to clear search tab mapping for removed tab:', error)
+    }
+});
+
 
 // Omnibox event handlers
 chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {

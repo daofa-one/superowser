@@ -63,6 +63,7 @@ export interface BrowserState {
   // Browser-sourced search/chat
   browserSearchHistory: BrowserSearchQuery[]
   browserChatHistory: BrowserChatMessage[]
+  searchTabs: Record<string, { tabId: number; windowId?: number }>
 }
 
 export interface UserContextState {
@@ -125,7 +126,8 @@ export const useBackgroundStore = defineStore('background', {
       currentUrl: '',
       tabHistory: [],
       browserSearchHistory: [],
-      browserChatHistory: []
+      browserChatHistory: [],
+      searchTabs: {}
     },
 
     user: {
@@ -323,6 +325,45 @@ export const useBackgroundStore = defineStore('background', {
       }
 
       return context
+    },
+
+    setLastSearchTab(engine: string, info: { tabId: number; windowId?: number }) {
+      if (!engine) {
+        return
+      }
+
+      this.browser.searchTabs[engine] = {
+        tabId: info.tabId,
+        windowId: info.windowId
+      }
+    },
+
+    getLastSearchTab(engine: string): { tabId: number; windowId?: number } | null {
+      if (!engine) {
+        return null
+      }
+
+      return this.browser.searchTabs[engine] ?? null
+    },
+
+    clearLastSearchTab(engine: string) {
+      if (!engine) {
+        return
+      }
+
+      delete this.browser.searchTabs[engine]
+    },
+
+    clearSearchTabById(tabId: number) {
+      if (typeof tabId !== 'number') {
+        return
+      }
+
+      Object.entries(this.browser.searchTabs).forEach(([engine, info]) => {
+        if (info.tabId === tabId) {
+          delete this.browser.searchTabs[engine]
+        }
+      })
     },
 
     // Initialize store with persisted data

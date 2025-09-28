@@ -118,8 +118,39 @@ export class IntegratedCommandService extends CommandService {
         const buildUrl = searchEngines[engineKey]
         const url = buildUrl(query)
 
+        let reusedExistingTab = false
+        let tabInfo: { tabId: number; windowId?: number } | null = null
+
         try {
-          await chrome.tabs.create({ url })
+          tabInfo = this.container.backgroundStore?.getLastSearchTab?.(engineKey) ?? null
+
+          if (tabInfo?.tabId != null) {
+            try {
+              const existingTab = await chrome.tabs.get(tabInfo.tabId)
+              if (existingTab && existingTab.id != null) {
+                await chrome.tabs.update(existingTab.id, { url, active: true })
+                if (existingTab.windowId != null) {
+                  await chrome.windows.update(existingTab.windowId, { focused: true })
+                }
+                reusedExistingTab = true
+                tabInfo = { tabId: existingTab.id, windowId: existingTab.windowId }
+              }
+            } catch (error) {
+              console.warn('Failed to reuse existing search tab:', error)
+              this.container.backgroundStore?.clearSearchTabById?.(tabInfo.tabId)
+            }
+          }
+
+          if (!reusedExistingTab) {
+            const createdTab = await chrome.tabs.create({ url })
+            if (createdTab?.id != null) {
+              tabInfo = { tabId: createdTab.id, windowId: createdTab.windowId }
+            }
+          }
+
+          if (tabInfo?.tabId != null) {
+            this.container.backgroundStore?.setLastSearchTab?.(engineKey, tabInfo)
+          }
         } catch (error) {
           return CommandExecutor.createErrorResponse(
             'Unable to open browser tab for search',
