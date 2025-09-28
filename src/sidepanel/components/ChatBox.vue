@@ -170,7 +170,7 @@ watch(inputValue, (value) => {
   }
 })
 
-const applySuggestion = (suggestion: CommandSuggestion) => {
+const applySuggestion = (suggestion: CommandSuggestion, triggerSend = false) => {
   const text = suggestion.text || suggestion.content || ''
   if (!text) {
     return
@@ -178,6 +178,12 @@ const applySuggestion = (suggestion: CommandSuggestion) => {
   inputValue.value = text
   clearSuggestions()
   textareaRef.value?.focus()
+
+  if (triggerSend) {
+    nextTick(() => {
+      void sendMessage()
+    })
+  }
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
@@ -206,7 +212,7 @@ const handleKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Enter' && !event.shiftKey) {
     if (suggestions.value.length > 0 && highlightedIndex.value >= 0) {
       event.preventDefault()
-      applySuggestion(suggestions.value[highlightedIndex.value])
+      applySuggestion(suggestions.value[highlightedIndex.value], true)
     } else {
       event.preventDefault()
       void sendMessage()
@@ -331,7 +337,7 @@ const sendMessage = async () => {
 .chat-messages {
   flex: 1;
   padding: 16px;
-  padding-bottom: 160px;
+  padding-bottom: 24px;
   background: #f9fafb;
   display: flex;
   flex-direction: column;
