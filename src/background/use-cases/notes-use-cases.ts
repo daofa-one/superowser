@@ -61,15 +61,15 @@ export class NotesUseCases {
     const taskNames = request.tasks || []
     if (taskNames.length > 0) {
       for (const taskName of taskNames) {
+        const existingTask = await this.taskService.getByName(taskName)
+        const task = existingTask
+          ? existingTask
+          : await this.taskService.create(taskName, 'Auto-created when adding note')
+
         try {
-          // Check if task exists, create if not
-          await this.taskService.getByName(taskName)
+          await this.taskService.addNote(task.id, note.id)
         } catch (error) {
-          // Task doesn't exist, create it
-          await this.taskService.create({
-            name: taskName,
-            description: `Auto-created when adding note`
-          })
+          console.warn('Failed to link note to task', taskName, error)
         }
       }
     }
