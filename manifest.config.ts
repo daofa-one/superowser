@@ -45,6 +45,10 @@ export default defineManifest(async (env) => ({
   side_panel: {
     default_path: 'sidepanel/index.html'
   },
+  options_ui: {
+    page: 'options/index.html',
+    open_in_tab: true
+  },
   permissions: [
     'storage',
     'unlimitedStorage',

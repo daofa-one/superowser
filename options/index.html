@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Superowser Options</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="options-header">
+        <h1>Superowser Options</h1>
+        <p class="subtitle">Customize how the extension behaves.</p>
+      </header>
+
+      <section class="options-section">
+        <h2>Search</h2>
+        <p class="section-description">Pick the default engine used when you run the <code>/search</code> command.</p>
+        <label class="field">
+          <span class="field-label">Default search engine</span>
+          <select id="search-engine-select" class="field-control">
+            <option value="google">Google</option>
+            <option value="duckduckgo">DuckDuckGo</option>
+            <option value="bing">Bing</option>
+          </select>
+        </label>
+        <p id="status-message" class="status"></p>
+      </section>
+    </div>
+
+    <script type="module" src="/src/options/main.ts"></script>
+  </body>
+</html>

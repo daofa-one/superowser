@@ -208,12 +208,52 @@ export const useBackgroundStore = defineStore('background', {
   },
 
   actions: {
+    async loadSettingsFromStorage() {
+      try {
+        const result = await chrome.storage.local.get(['userSettings'])
+        const stored = result?.userSettings
+        if (stored && typeof stored === 'object') {
+          this.user.settings = {
+            ...this.user.settings,
+            ...stored
+          }
+          this.broadcastStateUpdate('user.settings', this.user.settings)
+        }
+      } catch (error) {
+        console.warn('[Background Store] Failed to load user settings from storage:', error)
+      }
+    },
+
+    async setPreferredSearchEngine(engine: string) {
+      const normalized = (engine || '').toLowerCase()
+      const allowedEngines = ['google', 'duckduckgo', 'bing']
+      if (!allowedEngines.includes(normalized)) {
+        throw new Error(`Unsupported search engine: ${engine}`)
+      }
+
+      if (this.user.settings.preferredSearchEngine === normalized) {
+        return
+      }
+
+      this.user.settings.preferredSearchEngine = normalized
+
+      try {
+        await chrome.storage.local.set({ userSettings: this.user.settings })
+      } catch (error) {
+        console.warn('[Background Store] Failed to persist user settings:', error)
+      }
+
+      this.broadcastStateUpdate('user.settings', this.user.settings)
+    },
+
     // Initialize store with persisted data
     async initialize(container?: any) {
       try {
         if (!container) {
           throw new Error('Container instance is required for initialization')
         }
+
+        await this.loadSettingsFromStorage()
 
         // Load active task from database
         const activeTask = await container.taskUseCases.getActiveTask()

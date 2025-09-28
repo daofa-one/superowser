@@ -294,6 +294,7 @@ export class DIContainer {
   private _analyticsService: AnalyticsService
   private _mlService: MLService
   private _commandService!: IntegratedCommandService
+  private _backgroundStore: any
 
   private constructor() {
     // Initialize services (repository layer)
@@ -352,6 +353,8 @@ export class DIContainer {
 
   // Set the background store for use cases
   public setBackgroundStore(backgroundStore: any): void {
+    this._backgroundStore = backgroundStore
+
     this._pageUseCases = new PageUseCases(
       this._pageService,
       this._taskService,
@@ -432,5 +435,9 @@ export class DIContainer {
 
   get commandService(): IntegratedCommandService {
     return this._commandService
+  }
+
+  get backgroundStore(): any {
+    return this._backgroundStore
   }
 }

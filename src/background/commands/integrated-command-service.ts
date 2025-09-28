@@ -43,8 +43,6 @@ export class IntegratedCommandService extends CommandService {
       bing: (query) => `https://www.bing.com/search?q=${encodeURIComponent(query)}`
     }
 
-    const defaultEngine = 'google'
-
     return {
       name: 'search',
       aliases: ['websearch', 'google'],
@@ -62,7 +60,6 @@ export class IntegratedCommandService extends CommandService {
           type: 'string',
           required: false,
           description: 'Search engine to use (google, duckduckgo, bing)',
-          defaultValue: defaultEngine,
           validation: {
             pattern: /^(google|duckduckgo|bing)$/i
           }
@@ -89,7 +86,10 @@ export class IntegratedCommandService extends CommandService {
           )
         }
 
-        const engineParam = (params.engine as string | undefined)?.toLowerCase() || defaultEngine
+        const defaultEngine = 'google'
+        const settings = this.container.backgroundStore?.user?.settings
+        const preferred = (settings?.preferredSearchEngine || defaultEngine).toLowerCase()
+        const engineParam = (params.engine as string | undefined)?.toLowerCase() || preferred
         const engineKey = searchEngines[engineParam] ? engineParam : defaultEngine
         const buildUrl = searchEngines[engineKey]
         const url = buildUrl(query)

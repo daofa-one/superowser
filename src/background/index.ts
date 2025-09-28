@@ -924,6 +924,17 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 data = backgroundStore.user.extensionChatHistory;
                 break;
 
+            case 'GET_USER_SETTINGS':
+                data = backgroundStore.user.settings;
+                break;
+
+            case 'UPDATE_USER_SETTINGS':
+                if (message.data?.preferredSearchEngine) {
+                    await backgroundStore.setPreferredSearchEngine(message.data.preferredSearchEngine);
+                }
+                data = backgroundStore.user.settings;
+                break;
+
             case 'OPEN_PAGE':
                 await focusOrOpenUrl(message.data.url);
                 data = { success: true };

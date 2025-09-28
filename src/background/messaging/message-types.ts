@@ -113,6 +113,17 @@ export interface GetExtensionChatHistoryMessage extends BaseMessage {
   type: 'GET_EXTENSION_CHAT_HISTORY'
 }
 
+export interface GetUserSettingsMessage extends BaseMessage {
+  type: 'GET_USER_SETTINGS'
+}
+
+export interface UpdateUserSettingsMessage extends BaseMessage {
+  type: 'UPDATE_USER_SETTINGS'
+  data: {
+    preferredSearchEngine?: string
+  }
+}
+
 export interface OpenPageMessage extends BaseMessage {
   type: 'OPEN_PAGE'
   data: { url: string; newTab?: boolean }
@@ -196,6 +207,8 @@ export type RequestMessage =
   | DeletePageMessage
   | GetCurrentTabInfoMessage
   | GetExtensionChatHistoryMessage
+  | GetUserSettingsMessage
+  | UpdateUserSettingsMessage
   | OpenPageMessage
   | GetSearchSuggestionsMessage
   | GetPopularTagsMessage
