@@ -244,7 +244,10 @@ const sendMessage = async () => {
 <template>
   <section class="chat-box">
     <header class="chat-header">
-      <h2 v-if="hasMessages">Chat</h2>
+      <div class="chat-title">
+        <span class="chat-icon" aria-hidden="true">💬</span>
+        <h2>Chat</h2>
+      </div>
       <span v-if="hasMessages" class="message-count">{{ messages.length }} messages</span>
     </header>
 
@@ -319,17 +322,27 @@ const sendMessage = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 0 16px;
 }
 
-.chat-header h2 {
-  margin-left: 16px;
+.chat-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-title h2 {
+  margin: 0;
   font-size: 18px;
   font-weight: 600;
   color: #1f2937;
 }
 
+.chat-icon {
+  font-size: 18px;
+}
+
 .message-count {
-  margin-right: 16px;
   font-size: 12px;
   color: #6b7280;
 }
