@@ -491,12 +491,10 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
             // Handle command response
             if (response.success) {
                 if (response.navigation) {
-                    // For navigation responses, we can't programmatically open the side panel
-                    // due to user gesture restrictions. Instead, we'll send the navigation
-                    // message to any already open side panel and show a helpful result.
+                    // Open sidepanel if it's not already open
                     const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true })
                     if (currentTab && currentTab.id) {
-                        // Send navigation message to any already open side panel
+                        // Send navigation message to the side panel
                         sendRuntimeMessageSafe({
                             type: 'COMMAND_NAVIGATION',
                             data: {
@@ -515,7 +513,7 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                                     type: 'command',
                                     id: 'command-result',
                                     title: response.content || 'Command executed',
-                                    snippet: 'Click extension icon to see changes in side panel',
+                                    snippet: '📋 Open sidepanel to see results (click extension icon)',
                                     score: 1,
                                     tags: [],
                                     tasks: []
@@ -616,13 +614,8 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
             const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
             if (currentTab && currentTab.id) {
-                try {
-                    await chrome.sidePanel.open({ tabId: currentTab.id });
-                } catch (openError) {
-                    console.warn('Failed to auto-open side panel from omnibox task activation:', openError);
-                }
-
                 // task-activate is handled via background state updates; no side panel push needed here.
+                // Note: Cannot programmatically open sidepanel due to user gesture restrictions
             }
         } else if (result.type === 'filter' || result.type === 'search') {
             // Handle search/filter results
@@ -672,14 +665,6 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                         // If no page associated with note, show in side panel
                         const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
                         if (currentTab && currentTab.id) {
-                            let panelOpened = false;
-                            try {
-                                await chrome.sidePanel.open({ tabId: currentTab.id });
-                                panelOpened = true;
-                            } catch (openError) {
-                                console.warn('Failed to auto-open side panel for note result:', openError);
-                            }
-
                             // Send results for side panel
                             sendRuntimeMessageSafe({
                                 type: 'OMNIBOX_RESULTS',
@@ -692,16 +677,9 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                         return; // Exit early to avoid the multiple results handling
                     }
                 } else {
-                    // Multiple results - try to open side panel but send results regardless
+                    // Multiple results - send results to side panel if open
                     const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
                     if (currentTab && currentTab.id) {
-                        let panelOpened = false;
-                        try {
-                            await chrome.sidePanel.open({ tabId: currentTab.id });
-                            panelOpened = true;
-                        } catch (openError) {
-                            console.warn('Failed to auto-open side panel from omnibox input:', openError);
-                        }
 
                         // Send results for side panel
                         sendRuntimeMessageSafe({
