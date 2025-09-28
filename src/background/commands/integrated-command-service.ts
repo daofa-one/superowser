@@ -241,7 +241,7 @@ export class IntegratedCommandService extends CommandService {
         const message = `${baseMessage}${additional}`
 
         if (context.source === 'omnibox') {
-          return CommandExecutor.createSuccessResponse('text', message)
+          return CommandExecutor.createNavigationResponse('chat', message)
         }
 
         return CommandExecutor.createSuccessResponse('text', message, {
