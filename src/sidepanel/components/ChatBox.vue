@@ -336,7 +336,7 @@ const sendMessage = async () => {
 
 .chat-messages {
   flex: 1;
-  padding: 12px 16px 20px 16px;
+  padding: 12px 12px 18px 12px;
   background: #f9fafb;
   display: flex;
   flex-direction: column;
@@ -378,7 +378,7 @@ const sendMessage = async () => {
   align-self: flex-end;
   border-bottom-right-radius: 4px;
   max-width: calc(100% - 16px);
-  margin-right: 16px;
+  margin-right: 8px;
 }
 
 .chat-bubble.system-response,
@@ -389,7 +389,7 @@ const sendMessage = async () => {
   border: 1px solid #e5e7eb;
   border-bottom-left-radius: 4px;
   max-width: calc(100% - 16px);
-  margin-left: 16px;
+  margin-left: 8px;
 }
 
 .bubble-meta {
