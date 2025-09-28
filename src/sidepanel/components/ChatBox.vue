@@ -254,7 +254,7 @@ const sendMessage = async () => {
         <p class="empty-subtitle">Start typing below to send your first message.</p>
       </div>
 
-      <template v-else>
+      <TransitionGroup v-else name="chat" tag="div" class="chat-thread">
         <article
           v-for="bubble in messages"
           :key="bubble.id"
@@ -269,7 +269,7 @@ const sendMessage = async () => {
             <div v-if="bubble.command && bubble.type === 'system-response'" class="command-ref">/{{ bubble.command }}</div>
           </div>
         </article>
-      </template>
+      </TransitionGroup>
     </div>
 
     <form class="chat-input" @submit.prevent="sendMessage">
@@ -336,9 +336,13 @@ const sendMessage = async () => {
 
 .chat-messages {
   flex: 1;
-  padding: 16px;
-  padding-bottom: 24px;
+  padding: 12px 16px 20px 16px;
   background: #f9fafb;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-thread {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -546,5 +550,16 @@ const sendMessage = async () => {
   font-size: 11px;
   color: #94a3b8;
   text-transform: uppercase;
+}
+
+.chat-enter-active,
+.chat-leave-active {
+  transition: all 0.22s ease;
+}
+
+.chat-enter-from,
+.chat-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
 }
 </style>
