@@ -75,14 +75,14 @@ const loadSettings = async () => {
       ? preferredAi
       : 'chatgpt'
 
-    aiReuseToggle.checked = Boolean(settings.reuseAiTab)
+    aiReuseToggle.checked = settings.reuseAiTab !== false
   } catch (error) {
     console.error('[Options] Failed to load settings:', error)
     showStatus(engineStatusMessage, 'Could not load settings. Using defaults.', 'error')
     engineSelect.value = 'google'
     showStatus(aiStatusMessage, 'Could not load assistant setting. Using ChatGPT.', 'error')
     aiSelect.value = 'chatgpt'
-    aiReuseToggle.checked = false
+    aiReuseToggle.checked = true
   }
 }
 

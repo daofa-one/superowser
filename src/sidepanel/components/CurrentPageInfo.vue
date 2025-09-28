@@ -1109,7 +1109,7 @@ onUnmounted(() => {
             <div class="search-context-pill" :title="attachedSearchContextLabel.recordedAt ? `Recorded ${attachedSearchContextLabel.recordedAt}` : ''">
               <span class="search-context-icon">🔍</span>
               <span class="search-context-text">"{{ attachedSearchContextLabel.query }}" · {{ attachedSearchContextLabel.engine }}</span>
-              <button type="button" class="pill-remove" @click="removeAttachedSearchContext" aria-label="Remove search context">
+              <button type="button" class="pill-remove" aria-label="Remove search context" @click="removeAttachedSearchContext">
                 ×
               </button>
             </div>

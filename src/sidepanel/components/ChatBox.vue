@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useSidePanelStore } from '../stores/sidepanel-store'
 import type { BrowserChatMessage, ExtensionChatMessage } from '../stores/sidepanel-store'
 import type { CommandSuggestion } from '../../shared/commands/types'
+import type { NoteCategory } from '../../shared/models'
 
 type ChatHistoryEntry = (BrowserChatMessage | ExtensionChatMessage) & { timestamp: Date }
 
@@ -12,6 +13,7 @@ interface ChatBubble {
   content: string
   timestamp: Date
   command?: string
+  commandArgs?: string
   originalEntry?: ChatHistoryEntry
 }
 
@@ -25,6 +27,18 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const suggestions = ref<CommandSuggestion[]>([])
 const highlightedIndex = ref(-1)
 let suggestionRequestId = 0
+
+const showSaveAiModal = ref(false)
+const aiDraftContent = ref('')
+const aiDraftIncludeCurrentTask = ref(false)
+const aiSelectedTasks = ref<string[]>([])
+const aiTaskInput = ref('')
+const filteredAiTasks = ref<string[]>([])
+const showAiTaskSuggestions = ref(false)
+const aiAvailableTasks = ref<string[]>([])
+const aiDraftCategory = ref<NoteCategory>('brainstorm')
+const aiDraftComment = ref('')
+const isSavingAiNote = ref(false)
 
 const messages = computed<ChatBubble[]>(() => {
   const history = store.cache.recentChats ?? []
@@ -47,15 +61,18 @@ const messages = computed<ChatBubble[]>(() => {
       const commandLine = lines[0] // > /command
       const responsePart = lines.slice(2).join('\n') // Skip empty line
 
-      const command = commandLine.substring(2) // Remove "> "
+      const commandRaw = commandLine.substring(2).trim() // Remove "> "
+      const [rawCommand, ...commandArgs] = commandRaw.split(/\s+/)
+      const commandName = rawCommand ? rawCommand.replace(/^\//, '').toLowerCase() : ''
 
       // User command bubble
       bubbles.push({
         id: `${entry.id || entry.timestamp.getTime()}-command`,
         type: 'user-command',
-        content: command,
+        content: commandRaw,
         timestamp: new Date(entry.timestamp.getTime() - 1), // Slightly earlier
-        command: entry.command,
+        command: commandName,
+        commandArgs: commandArgs.join(' '),
         originalEntry: entry
       })
 
@@ -65,7 +82,8 @@ const messages = computed<ChatBubble[]>(() => {
         type: 'system-response',
         content: responsePart,
         timestamp: entry.timestamp,
-        command: entry.command,
+        command: commandName,
+        commandArgs: commandArgs.join(' '),
         originalEntry: entry
       })
     } else if (entry.source === 'extension') {
@@ -239,6 +257,178 @@ const sendMessage = async () => {
     }, 100)
   }
 }
+
+const hasCurrentTask = computed(() => !!store.cache.currentTask?.name)
+
+const availableAiTasks = computed<string[]>(() => {
+  const taskSet = new Set<string>()
+  (store.cache.recentTasks || []).forEach(task => {
+    if (task?.name) {
+      taskSet.add(task.name)
+    }
+  })
+  aiAvailableTasks.value.forEach(name => {
+    if (name) {
+      taskSet.add(name)
+    }
+  })
+  return Array.from(taskSet)
+})
+
+const filterAiTasks = () => {
+  const query = aiTaskInput.value.trim().toLowerCase()
+  const available = availableAiTasks.value
+    .filter(task => !aiSelectedTasks.value.includes(task))
+
+  if (!query) {
+    filteredAiTasks.value = available.slice(0, 10)
+  } else {
+    filteredAiTasks.value = available
+      .filter(task => task.toLowerCase().includes(query))
+      .slice(0, 10)
+  }
+
+  showAiTaskSuggestions.value = filteredAiTasks.value.length > 0 || (!!query && !aiSelectedTasks.value.includes(aiTaskInput.value.trim()))
+}
+
+watch(() => store.cache.recentTasks, () => {
+  filterAiTasks()
+})
+
+const loadAiTasks = async () => {
+  try {
+    const response = await store.sendMessage({ type: 'GET_TASKS' })
+    if (response?.type === 'SUCCESS' && Array.isArray(response.data)) {
+      aiAvailableTasks.value = response.data
+        .map((task: any) => typeof task?.name === 'string' ? task.name : '')
+        .filter((name: string) => name.length > 0)
+    }
+  } catch (error) {
+    console.warn('Failed to load AI task suggestions:', error)
+  } finally {
+    filterAiTasks()
+  }
+}
+
+watch(hasCurrentTask, (present) => {
+  if (!present) {
+    aiDraftIncludeCurrentTask.value = false
+  }
+})
+
+watch(aiTaskInput, () => {
+  filterAiTasks()
+})
+
+watch(aiSelectedTasks, () => {
+  filterAiTasks()
+}, { deep: true })
+
+const openSaveAiModal = async (bubble: ChatBubble) => {
+  aiDraftContent.value = bubble.content.trim()
+  aiDraftIncludeCurrentTask.value = hasCurrentTask.value
+  aiSelectedTasks.value = []
+  aiTaskInput.value = ''
+  filteredAiTasks.value = []
+  showAiTaskSuggestions.value = false
+  aiDraftCategory.value = 'brainstorm'
+  aiDraftComment.value = bubble.commandArgs ? `Prompt: ${bubble.commandArgs}` : ''
+
+  if (!aiDraftIncludeCurrentTask.value) {
+    aiDraftIncludeCurrentTask.value = false
+  }
+
+  showSaveAiModal.value = true
+  void loadAiTasks()
+}
+
+const closeSaveAiModal = () => {
+  showSaveAiModal.value = false
+  aiDraftContent.value = ''
+  aiDraftIncludeCurrentTask.value = false
+  aiSelectedTasks.value = []
+  aiTaskInput.value = ''
+  filteredAiTasks.value = []
+  showAiTaskSuggestions.value = false
+  aiDraftCategory.value = 'brainstorm'
+  aiDraftComment.value = ''
+}
+
+const saveAiNote = async () => {
+  const content = aiDraftContent.value.trim()
+  if (!content || isSavingAiNote.value) {
+    store.addNotification({
+      type: 'error',
+      message: 'Cannot save empty response'
+    })
+    return
+  }
+
+  const tasks = new Set<string>()
+  if (aiDraftIncludeCurrentTask.value && store.cache.currentTask?.name) {
+    tasks.add(store.cache.currentTask.name)
+  }
+  aiSelectedTasks.value.forEach(task => tasks.add(task))
+
+  const comment = aiDraftComment.value.trim()
+
+  isSavingAiNote.value = true
+  try {
+    const response = await store.sendMessage({
+      type: 'SAVE_NOTE',
+      data: {
+        content,
+        comment: comment || undefined,
+        tasks: tasks.size > 0 ? Array.from(tasks) : undefined,
+        category: aiDraftCategory.value
+      }
+    })
+
+    if (response?.type !== 'SUCCESS') {
+      throw new Error(response?.error?.message || 'Failed to save note')
+    }
+
+    store.addNotification({
+      type: 'success',
+      message: 'AI response saved to notes'
+    })
+    closeSaveAiModal()
+  } catch (error) {
+    console.error('Failed to save AI response:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to save AI response'
+    })
+  } finally {
+    isSavingAiNote.value = false
+  }
+}
+
+const handleAiTaskInputFocus = () => {
+  filterAiTasks()
+  showAiTaskSuggestions.value = filteredAiTasks.value.length > 0
+}
+
+const handleAiTaskInputBlur = () => {
+  setTimeout(() => {
+    showAiTaskSuggestions.value = false
+  }, 150)
+}
+
+const addAiTask = (taskName: string) => {
+  const normalized = taskName.trim()
+  if (!normalized || aiSelectedTasks.value.includes(normalized)) {
+    return
+  }
+  aiSelectedTasks.value.push(normalized)
+  aiTaskInput.value = ''
+  filterAiTasks()
+}
+
+const removeAiTask = (taskName: string) => {
+  aiSelectedTasks.value = aiSelectedTasks.value.filter(task => task !== taskName)
+  filterAiTasks()
+}
 </script>
 
 <template>
@@ -270,6 +460,14 @@ const sendMessage = async () => {
           <div class="bubble-content">
             <p class="content">{{ bubble.content }}</p>
             <div v-if="bubble.command && bubble.type === 'system-response'" class="command-ref">/{{ bubble.command }}</div>
+            <div
+              v-if="bubble.type === 'system-response' && bubble.command === 'ai'"
+              class="bubble-actions"
+            >
+              <button type="button" class="bubble-action" @click="openSaveAiModal(bubble)">
+                Save to notes
+              </button>
+            </div>
           </div>
         </article>
       </TransitionGroup>
@@ -306,6 +504,95 @@ const sendMessage = async () => {
         </button>
       </div>
     </form>
+
+    <div v-if="showSaveAiModal" class="modal-backdrop">
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="ai-save-title">
+        <header class="modal-header">
+          <h3 id="ai-save-title">Save AI Response</h3>
+        </header>
+        <section class="modal-body">
+          <label class="modal-field">
+            <span>Content</span>
+            <textarea v-model="aiDraftContent" rows="6" class="modal-textarea"></textarea>
+          </label>
+
+          <label class="modal-field">
+            <span>Comment (optional)</span>
+            <input v-model="aiDraftComment" type="text" class="modal-input" placeholder="Prompt or your note" />
+          </label>
+
+          <label class="modal-field">
+            <span>Category</span>
+            <select v-model="aiDraftCategory" class="modal-select">
+              <option value="brainstorm">Brainstorm</option>
+              <option value="plan">Plan / Blueprint</option>
+              <option value="note">General Note</option>
+              <option value="highlight">Highlight</option>
+            </select>
+          </label>
+
+          <label class="modal-checkbox">
+            <input
+              v-model="aiDraftIncludeCurrentTask"
+              type="checkbox"
+              :disabled="!hasCurrentTask"
+            />
+            <span>Link to current task ({{ hasCurrentTask ? store.cache.currentTask?.name : 'none' }})</span>
+          </label>
+
+          <div v-if="aiSelectedTasks.length > 0" class="modal-selected-tasks">
+            <span v-for="task in aiSelectedTasks" :key="task" class="modal-task-pill">
+              📁 {{ task }}
+              <button type="button" class="pill-remove" aria-label="Remove task" @click="removeAiTask(task)">×</button>
+            </span>
+          </div>
+
+          <label class="modal-field">
+            <span>Add task</span>
+            <div class="modal-task-input">
+              <input
+                v-model="aiTaskInput"
+                type="text"
+                class="modal-input"
+                placeholder="Type to search or create"
+                autocomplete="off"
+                @focus="handleAiTaskInputFocus"
+                @blur="handleAiTaskInputBlur"
+                @keyup.enter.prevent="aiTaskInput && addAiTask(aiTaskInput)"
+              />
+
+              <div v-if="showAiTaskSuggestions" class="modal-task-suggestions">
+                <button
+                  v-for="task in filteredAiTasks"
+                  :key="task"
+                  type="button"
+                  class="task-suggestion"
+                  @mousedown.prevent="addAiTask(task)"
+                >
+                  📁 {{ task }}
+                </button>
+                <button
+                  v-if="aiTaskInput && !filteredAiTasks.includes(aiTaskInput.trim()) && !aiSelectedTasks.includes(aiTaskInput.trim())"
+                  type="button"
+                  class="task-suggestion create"
+                  @mousedown.prevent="addAiTask(aiTaskInput)"
+                >
+                  ➕ Create "{{ aiTaskInput.trim() }}"
+                </button>
+              </div>
+            </div>
+          </label>
+        </section>
+        <footer class="modal-actions">
+          <button type="button" class="btn btn-secondary" :disabled="isSavingAiNote" @click="closeSaveAiModal">
+            Cancel
+          </button>
+          <button type="button" class="btn btn-primary" :disabled="isSavingAiNote" @click="saveAiNote">
+            {{ isSavingAiNote ? 'Saving…' : 'Save note' }}
+          </button>
+        </footer>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -446,6 +733,27 @@ const sendMessage = async () => {
   border: 1px solid #e5e7eb;
 }
 
+.bubble-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.bubble-action {
+  border: none;
+  background: #1d4ed8;
+  color: #fff;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.bubble-action:hover {
+  background: #1e3a8a;
+}
+
 .chat-input {
   position: sticky;
   bottom: 0;
@@ -577,4 +885,152 @@ const sendMessage = async () => {
   opacity: 0;
   transform: translateY(6px);
 }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 2000;
+}
+
+.modal-panel {
+  width: min(520px, 100%);
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.modal-input,
+.modal-textarea,
+.modal-select {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.modal-textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.modal-input:focus,
+.modal-textarea:focus,
+.modal-select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.modal-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.modal-checkbox input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+}
+
+.modal-selected-tasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.modal-task-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #bbf7d0;
+  font-size: 12px;
+}
+
+.modal-task-input {
+  position: relative;
+}
+
+.modal-task-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.task-suggestion {
+  padding: 8px 12px;
+  font-size: 13px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.task-suggestion:hover {
+  background: #f3f4f6;
+}
+
+.task-suggestion.create {
+  color: #2563eb;
+  border-top: 1px solid #e5e7eb;
+  font-weight: 500;
+}
+
+.modal-actions {
+  padding: 16px 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
 </style>
+.modal-selected-tasks {
+  margin-bottom: 4px;
+}

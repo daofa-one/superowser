@@ -146,7 +146,7 @@ export const useBackgroundStore = defineStore('background', {
         autoDetectChatMessages: true,
         preferredSearchEngine: 'google',
         preferredAiProvider: 'chatgpt',
-        reuseAiTab: false
+        reuseAiTab: true
       },
 
       stats: {
@@ -234,7 +234,7 @@ export const useBackgroundStore = defineStore('background', {
             this.user.settings.preferredAiProvider = 'chatgpt'
           }
           if (typeof this.user.settings.reuseAiTab !== 'boolean') {
-            this.user.settings.reuseAiTab = false
+            this.user.settings.reuseAiTab = true
           }
           this.broadcastStateUpdate('user.settings', this.user.settings)
         }
