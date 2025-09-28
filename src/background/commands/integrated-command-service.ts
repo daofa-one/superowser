@@ -156,7 +156,15 @@ export class IntegratedCommandService extends CommandService {
 
       execute: async (params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> => {
         try {
-          const taskName = params._positional[0] || params.name
+          const positionalParts = Array.isArray(params._positional)
+            ? params._positional.filter(part => typeof part === 'string' && part.trim().length > 0)
+            : []
+
+          const taskName = typeof params.name === 'string' && params.name.trim().length > 0
+            ? params.name.trim()
+            : positionalParts.length > 0
+              ? positionalParts.join(' ').trim()
+              : ''
 
           if (!taskName) {
             // Show current task
