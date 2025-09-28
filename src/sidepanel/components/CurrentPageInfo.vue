@@ -712,7 +712,7 @@ onUnmounted(() => {
             title="This page is saved in Superowser"
           >
             <span class="status-icon">✓</span>
-            <span class="status-text">Saved</span>
+            <!--span class="status-text">Saved</span-->
           </div>
           <div
             v-else
@@ -720,7 +720,7 @@ onUnmounted(() => {
             title="This page is not saved in Superowser"
           >
             <span class="status-icon">○</span>
-            <span class="status-text">Not Saved</span>
+            <!--span class="status-text">Not Saved</span-->
           </div>
         </div>
       </div>
