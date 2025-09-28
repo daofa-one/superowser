@@ -31,6 +31,90 @@ export class IntegratedCommandService extends CommandService {
     this.registerCommand(this.createIntegratedSetTaskCommand())
     this.registerCommand(this.createIntegratedTasksCommand())
     this.registerCommand(this.createIntegratedNewTaskCommand())
+
+    // Register additional integrated commands
+    this.registerCommand(this.createIntegratedSearchCommand())
+  }
+
+  private createIntegratedSearchCommand(): CommandDefinition {
+    const searchEngines: Record<string, (query: string) => string> = {
+      google: (query) => `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+      duckduckgo: (query) => `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
+      bing: (query) => `https://www.bing.com/search?q=${encodeURIComponent(query)}`
+    }
+
+    const defaultEngine = 'google'
+
+    return {
+      name: 'search',
+      aliases: ['websearch', 'google'],
+      description: 'Open a web search in a new tab',
+      category: 'navigation',
+      parameters: [
+        {
+          name: 'query',
+          type: 'string',
+          required: false,
+          description: 'Search query text'
+        },
+        {
+          name: 'engine',
+          type: 'string',
+          required: false,
+          description: 'Search engine to use (google, duckduckgo, bing)',
+          defaultValue: defaultEngine,
+          validation: {
+            pattern: /^(google|duckduckgo|bing)$/i
+          }
+        }
+      ],
+      examples: [
+        '/search superowser extension',
+        '/search --engine=duckduckgo keyboard shortcuts',
+        '/google task management best practices'
+      ],
+      minParameters: 0,
+
+      execute: async (params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> => {
+        const queryTokens = params._positional.length > 0
+          ? params._positional
+          : (params.query ? [params.query as string] : [])
+
+        const query = queryTokens.join(' ').trim()
+        if (!query) {
+          return CommandExecutor.createErrorResponse(
+            'Please provide a search query',
+            'SEARCH_QUERY_REQUIRED',
+            '/search <query>'
+          )
+        }
+
+        const engineParam = (params.engine as string | undefined)?.toLowerCase() || defaultEngine
+        const engineKey = searchEngines[engineParam] ? engineParam : defaultEngine
+        const buildUrl = searchEngines[engineKey]
+        const url = buildUrl(query)
+
+        try {
+          await chrome.tabs.create({ url })
+        } catch (error) {
+          return CommandExecutor.createErrorResponse(
+            'Unable to open browser tab for search',
+            'SEARCH_NAVIGATION_FAILED',
+            'Check browser permissions and try again'
+          )
+        }
+
+        const confirmation = `Opened ${engineKey} search for "${query}"`
+
+        if (context.source === 'omnibox') {
+          return CommandExecutor.createSuccessResponse('text', confirmation)
+        }
+
+        return CommandExecutor.createSuccessResponse('text', confirmation, {
+          followUp: [`/search --engine=${engineKey} ${query} site:`, '/search <new query>']
+        })
+      }
+    }
   }
 
   private createIntegratedSetTaskCommand(): CommandDefinition {
