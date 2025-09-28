@@ -74,6 +74,11 @@ export interface UserContextState {
   // Extension search/chat
   extensionSearchHistory: ExtensionSearchQuery[]
   extensionChatHistory: ExtensionChatMessage[]
+  lastSearchContext: {
+    query: string
+    engine: string
+    recordedAt: Date
+  } | null
 
   // User preferences
   settings: {
@@ -129,6 +134,7 @@ export const useBackgroundStore = defineStore('background', {
       workingSet: [],
       extensionSearchHistory: [],
       extensionChatHistory: [],
+      lastSearchContext: null,
 
       settings: {
         defaultCloseAfterSave: false,
@@ -293,6 +299,30 @@ export const useBackgroundStore = defineStore('background', {
       }
 
       this.broadcastStateUpdate('user.settings', this.user.settings)
+    },
+
+    setLastSearchContext(context: { query: string; engine: string }) {
+      this.user.lastSearchContext = {
+        query: context.query,
+        engine: context.engine,
+        recordedAt: new Date()
+      }
+
+      this.broadcastStateUpdate('user.lastSearchContext', this.user.lastSearchContext)
+    },
+
+    getActiveSearchContext(maxAgeMs = 10 * 60 * 1000): { query: string; engine: string; recordedAt: Date } | null {
+      const context = this.user.lastSearchContext
+      if (!context) {
+        return null
+      }
+
+      const age = Date.now() - context.recordedAt.getTime()
+      if (age > maxAgeMs) {
+        return null
+      }
+
+      return context
     },
 
     // Initialize store with persisted data

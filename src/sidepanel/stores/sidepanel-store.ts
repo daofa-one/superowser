@@ -84,6 +84,11 @@ export interface CachedState {
   previousTask: TaskEntry | null
   recentPages: PageEntry[]
   workingSet: PageEntry[]
+  lastSearchContext: {
+    query: string
+    engine: string
+    recordedAt: Date
+  } | null
 
   // Combined search/chat history for UI display
   recentSearches: Array<BrowserSearchQuery | ExtensionSearchQuery>
@@ -141,6 +146,7 @@ export const useSidePanelStore = defineStore('sidepanel', {
       previousTask: null,
       recentPages: [],
       workingSet: [],
+      lastSearchContext: null,
       recentSearches: [],
       recentChats: [],
       popularTags: [],
@@ -507,6 +513,26 @@ export const useSidePanelStore = defineStore('sidepanel', {
         return
       }
 
+      const searchContextPaths = [
+        'user.lastSearchContext',
+        'background.user.lastSearchContext'
+      ]
+
+      if (searchContextPaths.includes(path)) {
+        if (!value) {
+          this.cache.lastSearchContext = null
+        } else {
+          const recordedAt = (value as any)?.recordedAt
+          const parsedDate = recordedAt ? new Date(recordedAt) : new Date()
+          this.cache.lastSearchContext = {
+            query: (value as any)?.query ?? '',
+            engine: (value as any)?.engine ?? '',
+            recordedAt: Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate
+          }
+        }
+        return
+      }
+
       const directMappings: Record<string, keyof CachedState> = {
         'user.currentTask': 'currentTask',
         'user.previousTask': 'previousTask',
@@ -533,7 +559,8 @@ export const useSidePanelStore = defineStore('sidepanel', {
         const cacheKeyMap: Record<string, keyof CachedState> = {
           extensionChatHistory: 'recentChats',
           extensionSearchHistory: 'recentSearches',
-          settings: 'settings'
+          settings: 'settings',
+          lastSearchContext: 'lastSearchContext'
         }
 
         const mappedKey = cacheKeyMap[firstKey] || (firstKey as keyof CachedState)

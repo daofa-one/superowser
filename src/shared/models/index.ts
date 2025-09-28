@@ -1,5 +1,11 @@
 // Core domain models for Superowser
 
+export interface SearchContextEntry {
+  query: string
+  engine: string
+  recordedAt: Date
+}
+
 export interface PageEntry {
   id: string
   url: string
@@ -9,6 +15,8 @@ export interface PageEntry {
   shortcut?: string  // @shortcut for quick access
   tasks: string[]    // array of &tasks for grouping (changed from single task)
   content?: string   // extracted page content for search
+  searchContext?: SearchContextEntry
+  searchContextHistory: SearchContextEntry[]
   createdAt: Date
   updatedAt: Date
 }
@@ -61,6 +69,7 @@ export interface SavePageRequest {
   tags?: string[]
   shortcut?: string
   tasks?: string[]   // changed from single task to array
+  searchContext?: SearchContextEntry
   closeAfterSave?: boolean
 }
 

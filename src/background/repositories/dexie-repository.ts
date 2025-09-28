@@ -7,7 +7,8 @@ import {
   TaskEntry,
   SavePageRequest,
   SaveNoteRequest,
-  NoteCategory
+  NoteCategory,
+  SearchContextEntry
 } from '../../shared/models'
 import {
   IPageService,
@@ -87,6 +88,26 @@ db.version(4).stores({
   })
 })
 
+// Version 5: Track search context for pages
+db.version(5).stores({
+  pages: '++id, url, title, *tags, shortcut, *tasks, createdAt, updatedAt',
+  notes: '++id, pageId, content, category, *tasks, createdAt, updatedAt',
+  tasks: '++id, name, isActive, createdAt, updatedAt',
+  settings: '++key'
+}).upgrade(async trans => {
+  await trans.pages.toCollection().modify(page => {
+    const normalizedContext = normalizeSearchContext((page as any).searchContext)
+    page.searchContext = normalizedContext
+    page.searchContextHistory = mapSearchContextHistory((page as any).searchContextHistory)
+
+    if (normalizedContext) {
+      page.searchContextHistory = [...page.searchContextHistory, normalizedContext]
+        .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
+        .slice(-10)
+    }
+  })
+})
+
 // Utility functions
 const generateId = () => crypto.randomUUID()
 const now = () => new Date()
@@ -124,10 +145,52 @@ const mapNoteCategory = (note: NoteEntry | (NoteEntry & { category?: string; tag
   category: normalizeNoteCategory((note as any).category)
 })
 
+const normalizeSearchContext = (context: SearchContextEntry | undefined | null): SearchContextEntry | undefined => {
+  if (!context) {
+    return undefined
+  }
+
+  const recordedAt = context.recordedAt instanceof Date ? context.recordedAt : new Date(context.recordedAt)
+
+  if (!context.query || !context.engine || Number.isNaN(recordedAt.getTime())) {
+    return undefined
+  }
+
+  return {
+    query: context.query,
+    engine: context.engine,
+    recordedAt
+  }
+}
+
+const mapSearchContextHistory = (history: unknown): SearchContextEntry[] => {
+  if (!Array.isArray(history)) {
+    return []
+  }
+
+  return history
+    .map(entry => normalizeSearchContext(entry as SearchContextEntry))
+    .filter((entry): entry is SearchContextEntry => !!entry)
+}
+
+const mapPageEntry = (page: PageEntry | (PageEntry & { searchContext?: SearchContextEntry; searchContextHistory?: SearchContextEntry[] })): PageEntry => {
+  const searchContext = normalizeSearchContext((page as any).searchContext)
+  const searchContextHistory = mapSearchContextHistory((page as any).searchContextHistory)
+
+  return {
+    ...page,
+    searchContext,
+    searchContextHistory,
+    createdAt: page.createdAt instanceof Date ? page.createdAt : new Date(page.createdAt),
+    updatedAt: page.updatedAt instanceof Date ? page.updatedAt : new Date(page.updatedAt)
+  }
+}
+
 export class DexiePageService implements IPageService {
   async save(request: SavePageRequest): Promise<PageEntry> {
     const existing = await this.getByUrl(request.url)
     const normalizedTasks = normalizeKeyArray(request.tasks)
+    const normalizedContext = normalizeSearchContext(request.searchContext)
 
     if (existing) {
       // Update existing page
@@ -139,6 +202,14 @@ export class DexiePageService implements IPageService {
         tasks: normalizedTasks.length > 0 ? normalizedTasks : existing.tasks,
         updatedAt: now()
       }
+
+      if (normalizedContext) {
+        updates.searchContext = normalizedContext
+        updates.searchContextHistory = [...existing.searchContextHistory, normalizedContext]
+          .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())
+          .slice(-10)
+      }
+
       return this.update(existing.id, updates)
     } else {
       // Create new page
@@ -150,25 +221,30 @@ export class DexiePageService implements IPageService {
         tags: request.tags || [],
         shortcut: request.shortcut,
         tasks: normalizedTasks,
+        searchContext: normalizedContext,
+        searchContextHistory: normalizedContext ? [normalizedContext] : [],
         createdAt: now(),
         updatedAt: now()
       }
 
       await db.pages.add(page)
-      return page
+      return mapPageEntry(page)
     }
   }
 
   async getById(id: string): Promise<PageEntry | null> {
-    return await db.pages.get(id) || null
+    const raw = await db.pages.get(id)
+    return raw ? mapPageEntry(raw) : null
   }
 
   async getByUrl(url: string): Promise<PageEntry | null> {
-    return await db.pages.where('url').equals(url).first() || null
+    const raw = await db.pages.where('url').equals(url).first()
+    return raw ? mapPageEntry(raw) : null
   }
 
   async getByShortcut(shortcut: string): Promise<PageEntry | null> {
-    return await db.pages.where('shortcut').equals(shortcut).first() || null
+    const raw = await db.pages.where('shortcut').equals(shortcut).first()
+    return raw ? mapPageEntry(raw) : null
   }
 
   async getByTask(task: string): Promise<PageEntry[]> {
@@ -176,11 +252,13 @@ export class DexiePageService implements IPageService {
     if (!normalized) {
       return []
     }
-    return await db.pages.where('tasks').anyOf([normalized]).toArray()
+    const results = await db.pages.where('tasks').anyOf([normalized]).toArray()
+    return results.map(mapPageEntry)
   }
 
   async getByTags(tags: string[]): Promise<PageEntry[]> {
-    return await db.pages.where('tags').anyOf(tags).toArray()
+    const results = await db.pages.where('tags').anyOf(tags).toArray()
+    return results.map(mapPageEntry)
   }
 
   async update(id: string, updates: Partial<PageEntry>): Promise<PageEntry> {
@@ -191,6 +269,27 @@ export class DexiePageService implements IPageService {
 
     if (updates?.tasks) {
       payload.tasks = normalizeKeyArray(updates.tasks)
+    }
+
+    if (updates?.searchContext) {
+      const normalizedContext = normalizeSearchContext(updates.searchContext)
+      if (normalizedContext) {
+        payload.searchContext = normalizedContext
+        const existing = await this.getById(id)
+        const history = existing?.searchContextHistory ?? []
+        payload.searchContextHistory = [...history, normalizedContext]
+          .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())
+          .slice(-10)
+      }
+    } else if (updates && 'searchContext' in updates && !updates.searchContext) {
+      payload.searchContext = undefined
+    }
+
+    if (updates?.searchContextHistory) {
+      payload.searchContextHistory = updates.searchContextHistory
+        .map(context => normalizeSearchContext(context))
+        .filter((entry): entry is SearchContextEntry => !!entry)
+        .slice(-10)
     }
 
     await db.pages.update(id, payload)
@@ -204,17 +303,18 @@ export class DexiePageService implements IPageService {
   }
 
   async getAll(limit = 100, offset = 0): Promise<PageEntry[]> {
-    return await db.pages
+    const results = await db.pages
       .orderBy('updatedAt')
       .reverse()
       .offset(offset)
       .limit(limit)
       .toArray()
+    return results.map(mapPageEntry)
   }
 
   async search(query: string): Promise<PageEntry[]> {
     const searchTerms = query.toLowerCase().split(' ')
-    return await db.pages
+    const results = await db.pages
       .filter(page =>
         searchTerms.every(term =>
           page.title.toLowerCase().includes(term) ||
@@ -224,6 +324,7 @@ export class DexiePageService implements IPageService {
         )
       )
       .toArray()
+    return results.map(mapPageEntry)
   }
 }
 

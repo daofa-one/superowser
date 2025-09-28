@@ -62,11 +62,14 @@ export class PageUseCases {
     // Get current active task if any
     const activeTask = await this.taskService.getActive()
 
+    const searchContext = this.backgroundStore?.getActiveSearchContext?.()
+
     const request: SavePageRequest = {
       url: tabInfo.url,
       title: tabInfo.title,
       favicon: tabInfo.favicon,
-      tasks: activeTask ? [activeTask.name] : []
+      tasks: activeTask ? [activeTask.name] : [],
+      searchContext: searchContext || undefined
     }
 
     return this.savePage(request)

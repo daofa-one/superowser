@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useSidePanelStore } from '../stores/sidepanel-store'
-import type { NoteEntry, NoteCategory } from '../../shared/models'
+import type { NoteEntry, NoteCategory, SearchContextEntry } from '../../shared/models'
 import NotesList from './notes/NotesList.vue'
 
 const store = useSidePanelStore()
@@ -30,6 +30,8 @@ const currentPage = ref<{
   tasks: string[];
   noteCount: number;
   shortcut?: string;
+  searchContext?: SearchContextEntry;
+  searchContextHistory: SearchContextEntry[];
 } | null>(null)
 const isLoading = ref(true)
 const isPageSaved = ref(false)
@@ -54,6 +56,7 @@ const noteTaskInput = ref('')
 const showNoteTaskSuggestions = ref(false)
 const filteredNoteTasks = ref<string[]>([])
 const noteCategory = ref<NoteCategory>('note')
+const attachedSearchContext = ref<SearchContextEntry | null>(null)
 // Notes state is now handled by NotesList component
 
 const formatDateTime = (value?: Date | string) => {
@@ -78,6 +81,52 @@ const displayUrl = computed(() => {
 
 const hasNotes = computed(() => {
   return (currentPage.value?.noteCount ?? 0) > 0
+})
+
+const formattedSearchContext = computed(() => {
+  const context = currentPage.value?.searchContext
+  if (!context) {
+    return null
+  }
+
+  const timestamp = context.recordedAt instanceof Date ? context.recordedAt : new Date(context.recordedAt)
+  const formattedTime = Number.isNaN(timestamp.getTime())
+    ? ''
+    : new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(timestamp)
+
+  return {
+    query: context.query,
+    engine: context.engine,
+    recordedAt: formattedTime
+  }
+})
+
+const attachedSearchContextLabel = computed(() => {
+  if (!attachedSearchContext.value) {
+    return null
+  }
+
+  const { query, engine, recordedAt } = attachedSearchContext.value
+  const timestamp = recordedAt instanceof Date ? recordedAt : new Date(recordedAt)
+  const formattedTime = Number.isNaN(timestamp.getTime())
+    ? ''
+    : new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(timestamp)
+
+  return {
+    query,
+    engine,
+    recordedAt: formattedTime
+  }
 })
 
 const showInitialLoader = computed(() => isLoading.value && !currentPage.value)
@@ -160,7 +209,9 @@ const loadCurrentPageInfo = async () => {
         tags: savedPage?.tags || [],
         tasks: savedPage?.tasks || [],
         noteCount,
-        shortcut: savedPage?.shortcut || undefined
+        shortcut: savedPage?.shortcut || undefined,
+        searchContext: savedPage?.searchContext,
+        searchContextHistory: savedPage?.searchContextHistory ?? []
       }
       pageNotes.value = notes
       isPageSaved.value = !!savedPage
@@ -474,7 +525,9 @@ const saveNote = async () => {
           tags: savePageResponse.data.tags || currentPage.value!.tags,
           tasks: savePageResponse.data.tasks || currentPage.value!.tasks,
           noteCount: Array.isArray(pageNotes.value) ? pageNotes.value.length : currentPage.value!.noteCount,
-          shortcut: savePageResponse.data.shortcut || currentPage.value!.shortcut
+          shortcut: savePageResponse.data.shortcut || currentPage.value!.shortcut,
+          searchContext: savePageResponse.data.searchContext || currentPage.value!.searchContext,
+          searchContextHistory: savePageResponse.data.searchContextHistory || currentPage.value!.searchContextHistory
         }
         isPageSaved.value = true
       } else {
@@ -559,9 +612,25 @@ const toggleSaveForm = async () => {
     if (store.cache.currentTask?.name && !selectedTasks.value.includes(store.cache.currentTask.name)) {
       selectedTasks.value.push(store.cache.currentTask.name)
     }
+    const context = store.cache.lastSearchContext
+    attachedSearchContext.value = context ? { ...context } : null
     taskInput.value = ''
     filterTasks()
   }
+}
+
+watch(() => store.cache.lastSearchContext, (context) => {
+  if (!showSaveForm.value) {
+    return
+  }
+
+  if (!attachedSearchContext.value) {
+    attachedSearchContext.value = context ? { ...context } : null
+  }
+})
+
+const removeAttachedSearchContext = () => {
+  attachedSearchContext.value = null
 }
 
 const filterTasks = () => {
@@ -611,7 +680,8 @@ const saveCurrentPage = async () => {
     const response = await store.sendMessage({
       type: 'SAVE_CURRENT_TAB',
       data: {
-        tasks: selectedTasks.value.length > 0 ? selectedTasks.value : undefined
+        tasks: selectedTasks.value.length > 0 ? selectedTasks.value : undefined,
+        searchContext: attachedSearchContext.value || undefined
       }
     })
 
@@ -770,6 +840,16 @@ onUnmounted(() => {
           <div v-if="currentPage.shortcut" class="shortcut">
             @{{ currentPage.shortcut }}
           </div>
+        </div>
+
+        <div v-if="formattedSearchContext" class="search-context">
+          <span class="search-chip" :title="`Search query recorded ${formattedSearchContext.recordedAt}`">
+            🔍 "{{ formattedSearchContext.query }}"
+          </span>
+          <span class="search-meta">
+            via {{ formattedSearchContext.engine }}
+            <span v-if="formattedSearchContext.recordedAt"> · {{ formattedSearchContext.recordedAt }}</span>
+          </span>
         </div>
       </div>
 
@@ -1024,6 +1104,17 @@ onUnmounted(() => {
         </div>
 
         <div class="form-content">
+          <div v-if="attachedSearchContext && attachedSearchContextLabel" class="input-group">
+            <label>Search context</label>
+            <div class="search-context-pill" :title="attachedSearchContextLabel.recordedAt ? `Recorded ${attachedSearchContextLabel.recordedAt}` : ''">
+              <span class="search-context-icon">🔍</span>
+              <span class="search-context-text">"{{ attachedSearchContextLabel.query }}" · {{ attachedSearchContextLabel.engine }}</span>
+              <button type="button" class="pill-remove" @click="removeAttachedSearchContext" aria-label="Remove search context">
+                ×
+              </button>
+            </div>
+          </div>
+
           <!-- Selected Tasks Display -->
           <div v-if="selectedTasks.length > 0" class="input-group">
             <label>Selected Tasks:</label>
@@ -1320,6 +1411,30 @@ onUnmounted(() => {
   padding: 2px 4px;
   border-radius: 3px;
   font-family: monospace;
+}
+
+.search-context {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.search-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eef2ff;
+  color: #312e81;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.search-meta {
+  font-size: 11px;
+  color: #64748b;
 }
 
 /* Action Section */
@@ -1895,6 +2010,41 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
+}
+
+.search-context-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #312e81;
+  border: 1px solid #c7d2fe;
+  font-size: 13px;
+}
+
+.search-context-icon {
+  font-size: 14px;
+}
+
+.search-context-text {
+  font-weight: 500;
+}
+
+.pill-remove {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.pill-remove:hover {
+  opacity: 0.7;
 }
 
 .selected-task-item {

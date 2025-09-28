@@ -128,10 +128,19 @@ export class IntegratedCommandService extends CommandService {
           )
         }
 
+        try {
+          this.container.backgroundStore?.setLastSearchContext?.({
+            query,
+            engine: engineKey
+          })
+        } catch (error) {
+          console.warn('Failed to record search context:', error)
+        }
+
         const confirmation = `Opened ${engineKey} search for "${query}"`
 
         if (context.source === 'omnibox') {
-          return CommandExecutor.createSuccessResponse('text', confirmation)
+          return CommandExecutor.createNavigationResponse('chat', confirmation)
         }
 
         return CommandExecutor.createSuccessResponse('text', confirmation, {

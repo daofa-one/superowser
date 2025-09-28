@@ -805,7 +805,16 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
 
         switch (message.type) {
             case 'SAVE_PAGE':
-                data = await container.pageUseCases.savePage(message.data);
+                {
+                    const activeSearchContext = message.data?.searchContext
+                        ? message.data.searchContext
+                        : container.backgroundStore?.getActiveSearchContext?.()
+
+                    data = await container.pageUseCases.savePage({
+                        ...message.data,
+                        searchContext: activeSearchContext
+                    })
+                }
                 break;
 
             case 'SAVE_CURRENT_TAB':
@@ -814,12 +823,19 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                     throw new Error('No active tab found');
                 }
 
-                data = await container.pageUseCases.savePage({
-                    url: currentTab.url,
-                    title: currentTab.title,
-                    favicon: currentTab.favicon,
-                    ...message.data
-                });
+                {
+                    const activeSearchContext = message.data?.searchContext
+                        ? message.data.searchContext
+                        : container.backgroundStore?.getActiveSearchContext?.()
+
+                    data = await container.pageUseCases.savePage({
+                        url: currentTab.url,
+                        title: currentTab.title,
+                        favicon: currentTab.favicon,
+                        ...message.data,
+                        searchContext: activeSearchContext
+                    })
+                }
                 break;
 
             case 'SAVE_NOTE':
