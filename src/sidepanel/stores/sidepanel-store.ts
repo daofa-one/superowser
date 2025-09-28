@@ -511,7 +511,9 @@ export const useSidePanelStore = defineStore('sidepanel', {
         'user.currentTask': 'currentTask',
         'user.previousTask': 'previousTask',
         'currentTask': 'currentTask',
-        'previousTask': 'previousTask'
+        'previousTask': 'previousTask',
+        'user.settings': 'settings',
+        'settings': 'settings'
       }
 
       const targetKey = directMappings[path]
@@ -530,11 +532,12 @@ export const useSidePanelStore = defineStore('sidepanel', {
         // Normalize legacy nested paths to cache keys
         const cacheKeyMap: Record<string, keyof CachedState> = {
           extensionChatHistory: 'recentChats',
-          extensionSearchHistory: 'recentSearches'
+          extensionSearchHistory: 'recentSearches',
+          settings: 'settings'
         }
 
-        const mappedKey = cacheKeyMap[firstKey] || firstKey
-        if (typeof (this.cache as any)[firstKey] === 'undefined') {
+        const mappedKey = cacheKeyMap[firstKey] || (firstKey as keyof CachedState)
+        if (typeof (this.cache as any)[mappedKey] === 'undefined') {
           (this.cache as any)[mappedKey] = {}
         }
 

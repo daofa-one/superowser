@@ -10,6 +10,7 @@ import {
 import { useBackgroundStore } from './stores/background-store'
 import { createPinia, setActivePinia } from 'pinia'
 import { escapeForXML } from '../shared/utils'
+import { formatCommandResponseForChat } from '../shared/commands/formatters'
 // Initialize dependency injection container and shared store
 const container = DIContainer.getInstance()
 const pinia = createPinia()
@@ -526,14 +527,20 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                     const [rawCommand, ...commandArgs] = commandInput.slice(1).split(/\s+/)
                     const commandName = rawCommand?.toLowerCase()
 
-                    let chatContent = response.content || commandInput
+                    let displayResponse = response
                     if (commandName === 'help' || commandName === '?' || commandName === 'h') {
                         const helpTarget = commandArgs.join(' ') || undefined
-                        chatContent = container.commandService.getHelp(helpTarget) || chatContent
+                        const helpText = container.commandService.getHelp(helpTarget)
+                        displayResponse = {
+                            success: true,
+                            type: 'text',
+                            content: helpText,
+                            followUp: response.followUp,
+                            metadata: response.metadata
+                        }
                     }
 
-                    // Format with command input for better context
-                    const formattedContent = `> ${commandInput}\n\n${chatContent}`
+                    const formattedContent = formatCommandResponseForChat(commandInput, displayResponse)
 
                     console.log('[Command Result][omnibox]', {
                         command: commandName,
@@ -547,25 +554,11 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                         command: commandName,
                         relatedTask: container.analyticsService.getCurrentContext().activeTask
                     })
-                } else if (response.type === 'notification') {
-                    // Show notification (could be implemented as a badge or message)
-                    console.log('[Command Result]', response.content)
-
-                    const commandInput = text.trim()
-                    const notificationContent = response.content || commandInput
-                    const formattedNotification = `> ${commandInput}\n\n${notificationContent}`
-
-                    backgroundStore.addExtensionChat({
-                        content: formattedNotification,
-                        command: commandInput.startsWith('/') ? commandInput.slice(1).split(/\s+/)[0]?.toLowerCase() : undefined,
-                        relatedTask: container.analyticsService.getCurrentContext().activeTask
-                    })
                 }
             } else {
                 // Handle command errors - also include the original command for context
                 const commandInput = text.trim()
-                const errorMessage = response.error?.message || 'Unknown error'
-                const formattedError = `> ${commandInput}\n\n❌ Error: ${errorMessage}`
+                const formattedError = formatCommandResponseForChat(commandInput, response)
 
                 console.error('[Command Error]', response.error?.message || 'Unknown error')
 
@@ -919,6 +912,83 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
 
             case 'GET_EXTENSION_CHAT_HISTORY':
                 data = backgroundStore.user.extensionChatHistory;
+                break;
+
+            case 'GET_COMMAND_SUGGESTIONS':
+                try {
+                    const input = message.data?.input ?? ''
+                    if (typeof input === 'string' && input.trim().startsWith('/')) {
+                        const commandContext = container.commandService.createContext('chatbox', {
+                            activeTask: container.analyticsService.getCurrentContext().activeTask,
+                            recentTags: container.analyticsService.getCurrentContext().recentTags
+                        })
+
+                        data = await container.commandService.getSuggestions(input.trim(), commandContext)
+                    } else {
+                        data = []
+                    }
+                } catch (error) {
+                    console.error('Error generating chatbox command suggestions:', error)
+                    data = []
+                }
+                break;
+
+            case 'EXTENSION_CHAT':
+                try {
+                    const chatContent: string = message.data?.content ?? ''
+                    const trimmedContent = chatContent.trim()
+
+                    if (trimmedContent.startsWith('/')) {
+                        const commandContext = container.commandService.createContext('chatbox', {
+                            activeTask: container.analyticsService.getCurrentContext().activeTask,
+                            recentTags: container.analyticsService.getCurrentContext().recentTags
+                        })
+
+                        const commandRequest = {
+                            input: trimmedContent,
+                            context: commandContext,
+                            timestamp: new Date()
+                        }
+
+                        const response = await container.commandService.processCommand(commandRequest)
+
+                        const [rawCommand] = trimmedContent.slice(1).split(/\s+/)
+                        const commandName = rawCommand?.toLowerCase()
+
+                        let displayResponse = response
+                        if (commandName === 'help' || commandName === '?' || commandName === 'h') {
+                            const commandArgs = trimmedContent.slice(1).split(/\s+/).slice(1)
+                            const helpTarget = commandArgs.join(' ') || undefined
+                            const helpText = container.commandService.getHelp(helpTarget)
+                            displayResponse = {
+                                success: true,
+                                type: 'text',
+                                content: helpText,
+                                followUp: response.followUp,
+                                metadata: response.metadata
+                            }
+                        }
+
+                        const formattedContent = formatCommandResponseForChat(trimmedContent, displayResponse)
+
+                        backgroundStore.addExtensionChat({
+                            content: formattedContent,
+                            command: commandName,
+                            relatedTask: message.data?.relatedTask || container.analyticsService.getCurrentContext().activeTask
+                        })
+                    } else {
+                        backgroundStore.addExtensionChat({
+                            content: chatContent,
+                            command: message.data?.command,
+                            relatedTask: message.data?.relatedTask || container.analyticsService.getCurrentContext().activeTask
+                        })
+                    }
+
+                    data = { success: true }
+                } catch (error) {
+                    console.error('Chat command processing failed:', error)
+                    data = { success: false, error: error instanceof Error ? error.message : String(error) }
+                }
                 break;
 
             case 'GET_USER_SETTINGS':

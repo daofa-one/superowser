@@ -40,12 +40,6 @@ export function initializeStateSync() {
       return false
     }
 
-    if (message.type === 'EXTENSION_CHAT') {
-      backgroundStore.addExtensionChat(message.data)
-      sendResponse({ type: 'SUCCESS', data: { success: true } })
-      return false
-    }
-
     if (message.type === 'GET_RECENT_PAGES') {
       // This is now handled in the main message handler in index.ts
       // through container.pageUseCases.getRecentPages()

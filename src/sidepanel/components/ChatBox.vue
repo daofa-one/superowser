@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useSidePanelStore } from '../stores/sidepanel-store'
 import type { BrowserChatMessage, ExtensionChatMessage } from '../stores/sidepanel-store'
+import type { CommandSuggestion } from '../../shared/commands/types'
 
 type ChatHistoryEntry = (BrowserChatMessage | ExtensionChatMessage) & { timestamp: Date }
 
@@ -19,6 +20,11 @@ const store = useSidePanelStore()
 const inputValue = ref('')
 const isSending = ref(false)
 const messagesContainer = ref<HTMLDivElement | null>(null)
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
+
+const suggestions = ref<CommandSuggestion[]>([])
+const highlightedIndex = ref(-1)
+let suggestionRequestId = 0
 
 const messages = computed<ChatBubble[]>(() => {
   const history = store.cache.recentChats ?? []
@@ -121,10 +127,90 @@ onMounted(() => {
   })
 })
 
+const clearSuggestions = () => {
+  suggestions.value = []
+  highlightedIndex.value = -1
+}
+
+const fetchSuggestions = async (input: string) => {
+  const trimmed = input.trim()
+  if (!trimmed.startsWith('/')) {
+    clearSuggestions()
+    return
+  }
+
+  const requestId = ++suggestionRequestId
+  try {
+    const response = await store.sendMessage({
+      type: 'GET_COMMAND_SUGGESTIONS',
+      data: { input: trimmed }
+    })
+
+    if (requestId !== suggestionRequestId) {
+      return
+    }
+
+    if (response?.type === 'SUCCESS' && Array.isArray(response.data)) {
+      suggestions.value = response.data
+      highlightedIndex.value = response.data.length > 0 ? 0 : -1
+    } else {
+      clearSuggestions()
+    }
+  } catch (error) {
+    console.error('Failed to load command suggestions:', error)
+    clearSuggestions()
+  }
+}
+
+watch(inputValue, (value) => {
+  if (value.trim().startsWith('/')) {
+    fetchSuggestions(value)
+  } else {
+    clearSuggestions()
+  }
+})
+
+const applySuggestion = (suggestion: CommandSuggestion) => {
+  const text = suggestion.text || suggestion.content || ''
+  if (!text) {
+    return
+  }
+  inputValue.value = text
+  clearSuggestions()
+  textareaRef.value?.focus()
+}
+
 const handleKeydown = (event: KeyboardEvent) => {
+  if (suggestions.value.length > 0) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      highlightedIndex.value = Math.min(highlightedIndex.value + 1, suggestions.value.length - 1)
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      highlightedIndex.value = Math.max(highlightedIndex.value - 1, 0)
+      return
+    }
+    if (event.key === 'Tab' && highlightedIndex.value >= 0) {
+      event.preventDefault()
+      applySuggestion(suggestions.value[highlightedIndex.value])
+      return
+    }
+    if (event.key === 'Escape') {
+      clearSuggestions()
+      return
+    }
+  }
+
   if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
-    void sendMessage()
+    if (suggestions.value.length > 0 && highlightedIndex.value >= 0) {
+      event.preventDefault()
+      applySuggestion(suggestions.value[highlightedIndex.value])
+    } else {
+      event.preventDefault()
+      void sendMessage()
+    }
   }
 }
 
@@ -138,10 +224,13 @@ const sendMessage = async () => {
   try {
     await store.sendExtensionChat(content)
     inputValue.value = ''
+    clearSuggestions()
   } finally {
     isSending.value = false
-    // Wait a bit longer for the message to be processed and rendered
-    setTimeout(() => scrollToBottom(), 100)
+    setTimeout(() => {
+      scrollToBottom()
+      textareaRef.value?.focus()
+    }, 100)
   }
 }
 </script>
@@ -178,7 +267,23 @@ const sendMessage = async () => {
     </div>
 
     <form class="chat-input" @submit.prevent="sendMessage">
+      <div v-if="suggestions.length > 0" class="suggestions">
+        <button
+          v-for="(suggestion, index) in suggestions"
+          :key="suggestion.text || suggestion.display || index"
+          type="button"
+          class="suggestion-item"
+          :class="{ active: index === highlightedIndex }"
+          @mousedown.prevent="applySuggestion(suggestion)"
+        >
+          <span class="suggestion-text">{{ suggestion.display || suggestion.text }}</span>
+          <span class="suggestion-desc">{{ suggestion.description }}</span>
+          <span v-if="suggestion.category" class="suggestion-category">{{ suggestion.category }}</span>
+        </button>
+      </div>
+
       <textarea
+        ref="textareaRef"
         v-model="inputValue"
         placeholder="Type a message…"
         rows="3"
@@ -186,7 +291,7 @@ const sendMessage = async () => {
         @keydown="handleKeydown"
       />
       <div class="input-actions">
-        <span class="hint">Press Enter to send · Shift + Enter for newline</span>
+        <span class="hint">Enter to send · Shift+Enter for newline · Tab to complete</span>
         <button type="submit" class="send-button" :disabled="isSending || !inputValue.trim()">
           {{ isSending ? 'Sending…' : 'Send' }}
         </button>
@@ -319,21 +424,17 @@ const sendMessage = async () => {
 }
 
 .chat-input {
-  position: fixed;
-  bottom: 49px;
+  position: sticky;
+  bottom: 0;
   left: 0;
   right: 0;
-  margin-left: 16px;
-  margin-right: 16px;
   background: #ffffff;
   padding: 16px;
-  border-radius: 12px;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e5e7eb;
+  border-top: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  z-index: 100;
+  z-index: 10;
 }
 
 .chat-input textarea {
@@ -387,5 +488,57 @@ const sendMessage = async () => {
 
 .hint {
   opacity: 0.7;
+}
+
+.suggestions {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.suggestion-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background-color 0.15s ease;
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:hover,
+.suggestion-item.active {
+  background: #f8fafc;
+}
+
+.suggestion-text {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.suggestion-desc {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.suggestion-category {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
 }
 </style>

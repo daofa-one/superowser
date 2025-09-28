@@ -113,6 +113,13 @@ export interface GetExtensionChatHistoryMessage extends BaseMessage {
   type: 'GET_EXTENSION_CHAT_HISTORY'
 }
 
+export interface GetCommandSuggestionsMessage extends BaseMessage {
+  type: 'GET_COMMAND_SUGGESTIONS'
+  data: {
+    input: string
+  }
+}
+
 export interface GetUserSettingsMessage extends BaseMessage {
   type: 'GET_USER_SETTINGS'
 }
@@ -207,6 +214,7 @@ export type RequestMessage =
   | DeletePageMessage
   | GetCurrentTabInfoMessage
   | GetExtensionChatHistoryMessage
+  | GetCommandSuggestionsMessage
   | GetUserSettingsMessage
   | UpdateUserSettingsMessage
   | OpenPageMessage
