@@ -5,13 +5,22 @@ import type { BrowserChatMessage, ExtensionChatMessage } from '../stores/sidepan
 
 type ChatHistoryEntry = (BrowserChatMessage | ExtensionChatMessage) & { timestamp: Date }
 
+interface ChatBubble {
+  id: string
+  type: 'user-command' | 'system-response' | 'user-message' | 'browser-message'
+  content: string
+  timestamp: Date
+  command?: string
+  originalEntry?: ChatHistoryEntry
+}
+
 const store = useSidePanelStore()
 
 const inputValue = ref('')
 const isSending = ref(false)
 const messagesContainer = ref<HTMLDivElement | null>(null)
 
-const messages = computed<ChatHistoryEntry[]>(() => {
+const messages = computed<ChatBubble[]>(() => {
   const history = store.cache.recentChats ?? []
   const normalized = history
     .map((entry) => {
@@ -21,8 +30,61 @@ const messages = computed<ChatHistoryEntry[]>(() => {
       return { ...entry, timestamp } as ChatHistoryEntry
     })
     .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-  console.debug('[ChatBox] messages computed', normalized.length)
-  return normalized
+
+  // Convert to chat bubbles, separating command inputs from responses
+  const bubbles: ChatBubble[] = []
+
+  normalized.forEach((entry, index) => {
+    if (entry.source === 'extension' && entry.content.startsWith('> /')) {
+      // This is a command with response - split into two bubbles
+      const lines = entry.content.split('\n')
+      const commandLine = lines[0] // > /command
+      const responsePart = lines.slice(2).join('\n') // Skip empty line
+
+      const command = commandLine.substring(2) // Remove "> "
+
+      // User command bubble
+      bubbles.push({
+        id: `${entry.id || entry.timestamp.getTime()}-command`,
+        type: 'user-command',
+        content: command,
+        timestamp: new Date(entry.timestamp.getTime() - 1), // Slightly earlier
+        command: entry.command,
+        originalEntry: entry
+      })
+
+      // System response bubble
+      bubbles.push({
+        id: `${entry.id || entry.timestamp.getTime()}-response`,
+        type: 'system-response',
+        content: responsePart,
+        timestamp: entry.timestamp,
+        command: entry.command,
+        originalEntry: entry
+      })
+    } else if (entry.source === 'extension') {
+      // Regular extension message
+      bubbles.push({
+        id: entry.id || `${entry.timestamp.getTime()}`,
+        type: 'user-message',
+        content: entry.content,
+        timestamp: entry.timestamp,
+        originalEntry: entry
+      })
+    } else {
+      // Browser message
+      bubbles.push({
+        id: entry.id || `${entry.timestamp.getTime()}`,
+        type: 'browser-message',
+        content: entry.content,
+        timestamp: entry.timestamp,
+        originalEntry: entry
+      })
+    }
+  })
+
+  console.debug('[ChatBox] messages computed', bubbles.length, 'bubbles from', normalized.length, 'entries')
+  return bubbles
 })
 
 const hasMessages = computed(() => messages.value.length > 0)
@@ -38,14 +100,13 @@ const formattedTimestamp = (timestamp: Date) => {
   }
 }
 
-const messageSourceLabel = (entry: ChatHistoryEntry) => (
-  entry.source === 'extension' ? 'Superowser' : 'Browser'
-)
+// Remove this function as we now handle labels in the template
 
 const scrollToBottom = () => {
-  const container = messagesContainer.value
-  if (container) {
-    container.scrollTop = container.scrollHeight
+  // Scroll the main sidepanel container since chat messages use the parent's scrollbar
+  const mainContainer = document.querySelector('.sp-main')
+  if (mainContainer) {
+    mainContainer.scrollTop = mainContainer.scrollHeight
   }
 }
 
@@ -79,7 +140,8 @@ const sendMessage = async () => {
     inputValue.value = ''
   } finally {
     isSending.value = false
-    nextTick(() => scrollToBottom())
+    // Wait a bit longer for the message to be processed and rendered
+    setTimeout(() => scrollToBottom(), 100)
   }
 }
 </script>
@@ -99,17 +161,17 @@ const sendMessage = async () => {
 
       <template v-else>
         <article
-          v-for="entry in messages"
-          :key="entry.id || entry.timestamp.getTime()"
-          :class="['chat-message', entry.source]"
+          v-for="bubble in messages"
+          :key="bubble.id"
+          :class="['chat-bubble', bubble.type]"
         >
-          <div class="message-meta">
-            <span class="author">{{ messageSourceLabel(entry) }}</span>
-            <span class="timestamp">{{ formattedTimestamp(entry.timestamp) }}</span>
+          <div class="bubble-meta">
+            <span class="author">{{ bubble.type.includes('user') ? 'You' : 'Superowser' }}</span>
+            <span class="timestamp">{{ formattedTimestamp(bubble.timestamp) }}</span>
           </div>
-          <div class="message-body">
-            <p class="content">{{ entry.content }}</p>
-            <div v-if="entry.command" class="command">/{{ entry.command }}</div>
+          <div class="bubble-content">
+            <p class="content">{{ bubble.content }}</p>
+            <div v-if="bubble.command && bubble.type === 'system-response'" class="command-ref">/{{ bubble.command }}</div>
           </div>
         </article>
       </template>
@@ -137,9 +199,9 @@ const sendMessage = async () => {
 .chat-box {
   display: flex;
   flex-direction: column;
-  gap: 12px;
   width: 100%;
   height: 100%;
+  position: relative;
 }
 
 .chat-header {
@@ -149,23 +211,22 @@ const sendMessage = async () => {
 }
 
 .chat-header h2 {
-  margin: 0;
+  margin-left: 16px;
   font-size: 18px;
   font-weight: 600;
   color: #1f2937;
 }
 
 .message-count {
+  margin-right: 16px;
   font-size: 12px;
   color: #6b7280;
 }
 
 .chat-messages {
   flex: 1;
-  overflow-y: auto;
-  padding: 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
+  padding: 16px;
+  padding-bottom: 120px;
   background: #f9fafb;
   display: flex;
   flex-direction: column;
@@ -188,35 +249,51 @@ const sendMessage = async () => {
   font-size: 13px;
 }
 
-.chat-message {
+.chat-bubble {
   padding: 10px 12px;
-  border-radius: 10px;
-  max-width: 85%;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-  background: #ffffff;
-  align-self: flex-start;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  margin-bottom: 12px;
 }
 
-.chat-message.extension {
+.chat-bubble.user-command,
+.chat-bubble.user-message {
   background: #1d4ed8;
   color: #f8fafc;
   align-self: flex-end;
+  border-bottom-right-radius: 4px;
+  max-width: calc(100% - 16px);
+  margin-right: 16px;
 }
 
-.message-meta {
+.chat-bubble.system-response,
+.chat-bubble.browser-message {
+  background: #ffffff;
+  color: #1f2937;
+  align-self: flex-start;
+  border: 1px solid #e5e7eb;
+  border-bottom-left-radius: 4px;
+  max-width: calc(100% - 16px);
+  margin-left: 16px;
+}
+
+.bubble-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
+  font-size: 11px;
   margin-bottom: 6px;
-  opacity: 0.7;
+  opacity: 0.8;
+  font-weight: 500;
+  gap: 8px;
 }
 
-.chat-message.extension .message-meta {
+.chat-bubble.user-command .bubble-meta,
+.chat-bubble.user-message .bubble-meta {
   opacity: 0.9;
 }
 
-.message-body {
+.bubble-content {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -227,26 +304,36 @@ const sendMessage = async () => {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.4;
+  font-size: 14px;
 }
 
-.command {
+.command-ref {
   align-self: flex-start;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(148, 163, 184, 0.35);
-}
-
-.chat-message.extension .command {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.3);
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #e5e7eb;
 }
 
 .chat-input {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin-left: 16px;
+  margin-right: 16px;
+  background: #ffffff;
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  z-index: 100;
 }
 
 .chat-input textarea {

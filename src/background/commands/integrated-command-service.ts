@@ -32,6 +32,8 @@ export class IntegratedCommandService extends CommandService {
     registry.unregister('help')
     registry.unregister('?')
     registry.unregister('commands')
+    registry.unregister('version')
+    registry.unregister('v')
   }
 
   private registerIntegratedCommands(): void {
@@ -43,7 +45,8 @@ export class IntegratedCommandService extends CommandService {
       { name: 'save', factory: () => this.createIntegratedSaveCommand() },
       { name: 'open', factory: () => this.createIntegratedOpenCommand() },
       { name: 'notes', factory: () => this.createIntegratedNotesCommand() },
-      { name: 'help', factory: () => this.createIntegratedHelpCommand() }
+      { name: 'help', factory: () => this.createIntegratedHelpCommand() },
+      { name: 'version', factory: () => this.createIntegratedVersionCommand() }
     ]
 
     commands.forEach(({ name, factory }) => {
@@ -855,6 +858,44 @@ export class IntegratedCommandService extends CommandService {
     } catch (error) {
       console.error('Error finding task:', error)
       return null
+    }
+  }
+
+  private createIntegratedVersionCommand(): CommandDefinition {
+    return {
+      name: 'version',
+      aliases: ['v'],
+      description: 'Show extension version information',
+      category: 'system',
+      parameters: [],
+      examples: ['/version'],
+
+      execute: async (params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> => {
+        try {
+          // Get version from manifest if available
+          const manifest = chrome.runtime.getManifest()
+          const extensionVersion = manifest?.version || '1.0.0'
+
+          const versionInfo = {
+            extension: extensionVersion,
+            commandSystem: '1.2.0',
+            buildDate: new Date().toISOString().split('T')[0]
+          }
+
+          const versionText = `🔧 Superowser v${versionInfo.extension}\n📋 Command System v${versionInfo.commandSystem}\n📅 Build: ${versionInfo.buildDate}`
+
+          if (context.source === 'omnibox') {
+            return CommandExecutor.createNavigationResponse('chat', versionText, true)
+          } else {
+            return CommandExecutor.createSuccessResponse('text', versionText)
+          }
+        } catch (error) {
+          console.error('[Version Command] Error:', error)
+          return CommandExecutor.createErrorResponse(
+            error instanceof Error ? error.message : 'Failed to retrieve version information'
+          )
+        }
+      }
     }
   }
 }

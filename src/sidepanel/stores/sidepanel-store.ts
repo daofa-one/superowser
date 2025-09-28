@@ -485,11 +485,25 @@ export const useSidePanelStore = defineStore('sidepanel', {
               timestamp: entry?.timestamp ? new Date(entry.timestamp) : new Date()
             }))
           : []
+
+        // Check if this is a new message (newer than our latest cached message)
+        const existingIds = new Set(this.cache.recentChats.map(chat => chat.id))
+        const newMessages = normalized.filter(msg => !existingIds.has(msg.id))
+
+        if (newMessages.length > 0) {
+          // Append new messages to existing cache and sort by timestamp
+          this.cache.recentChats = [...this.cache.recentChats, ...newMessages]
+            .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+        } else {
+          // No new messages, just replace (for initial load)
+          this.cache.recentChats = normalized
+        }
+
         console.debug('[Sidepanel] Updated chat history', {
           path,
-          count: normalized.length
+          totalCount: this.cache.recentChats.length,
+          newMessages: newMessages.length
         })
-        this.cache.recentChats = normalized
         return
       }
 

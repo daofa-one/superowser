@@ -534,14 +534,18 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                         chatContent = container.commandService.getHelp(helpTarget) || chatContent
                     }
 
+                    // Format with command input for better context
+                    const formattedContent = `> ${commandInput}\n\n${chatContent}`
+
                     console.log('[Command Result][omnibox]', {
                         command: commandName,
                         args: commandArgs,
-                        content: chatContent
+                        input: commandInput,
+                        content: formattedContent
                     })
 
                     backgroundStore.addExtensionChat({
-                        content: chatContent,
+                        content: formattedContent,
                         command: commandName,
                         relatedTask: container.analyticsService.getCurrentContext().activeTask
                     })
@@ -549,14 +553,29 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
                     // Show notification (could be implemented as a badge or message)
                     console.log('[Command Result]', response.content)
 
+                    const commandInput = text.trim()
+                    const notificationContent = response.content || commandInput
+                    const formattedNotification = `> ${commandInput}\n\n${notificationContent}`
+
                     backgroundStore.addExtensionChat({
-                        content: response.content || text,
-                        command: text.trim().startsWith('/') ? text.trim().slice(1).split(/\s+/)[0]?.toLowerCase() : undefined,
+                        content: formattedNotification,
+                        command: commandInput.startsWith('/') ? commandInput.slice(1).split(/\s+/)[0]?.toLowerCase() : undefined,
                         relatedTask: container.analyticsService.getCurrentContext().activeTask
                     })
                 }
             } else {
+                // Handle command errors - also include the original command for context
+                const commandInput = text.trim()
+                const errorMessage = response.error?.message || 'Unknown error'
+                const formattedError = `> ${commandInput}\n\n❌ Error: ${errorMessage}`
+
                 console.error('[Command Error]', response.error?.message || 'Unknown error')
+
+                backgroundStore.addExtensionChat({
+                    content: formattedError,
+                    command: commandInput.startsWith('/') ? commandInput.slice(1).split(/\s+/)[0]?.toLowerCase() : undefined,
+                    relatedTask: container.analyticsService.getCurrentContext().activeTask
+                })
             }
 
             return // Exit early for commands
