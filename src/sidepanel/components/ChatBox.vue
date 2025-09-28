@@ -244,7 +244,7 @@ const sendMessage = async () => {
 <template>
   <section class="chat-box">
     <header class="chat-header">
-      <h2>Chat</h2>
+      <h2 v-if="hasMessages">Chat</h2>
       <span v-if="hasMessages" class="message-count">{{ messages.length }} messages</span>
     </header>
 
@@ -254,7 +254,7 @@ const sendMessage = async () => {
         <p class="empty-subtitle">Start typing below to send your first message.</p>
       </div>
 
-      <TransitionGroup v-else name="chat" tag="div" class="chat-thread">
+      <TransitionGroup v-else appear name="chat" tag="div" class="chat-thread">
         <article
           v-for="bubble in messages"
           :key="bubble.id"
@@ -553,12 +553,14 @@ const sendMessage = async () => {
 }
 
 .chat-enter-active,
-.chat-leave-active {
+.chat-leave-active,
+.chat-appear-active {
   transition: all 0.22s ease;
 }
 
 .chat-enter-from,
-.chat-leave-to {
+.chat-leave-to,
+.chat-appear-from {
   opacity: 0;
   transform: translateY(6px);
 }
