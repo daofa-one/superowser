@@ -226,7 +226,7 @@ const sendMessage = async () => {
 .chat-messages {
   flex: 1;
   padding: 16px;
-  padding-bottom: 120px;
+  padding-bottom: 160px;
   background: #f9fafb;
   display: flex;
   flex-direction: column;
@@ -320,7 +320,7 @@ const sendMessage = async () => {
 
 .chat-input {
   position: fixed;
-  bottom: 0;
+  bottom: 49px;
   left: 0;
   right: 0;
   margin-left: 16px;
