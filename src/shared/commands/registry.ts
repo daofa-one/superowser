@@ -162,6 +162,13 @@ export class CommandRegistry {
   }
 
   /**
+   * Get all command definitions
+   */
+  getAllCommands(): CommandDefinition[] {
+    return Array.from(this.commands.values())
+  }
+
+  /**
    * Get command usage statistics
    */
   getUsageStats(): Array<{ command: string; count: number; lastUsed: Date }> {

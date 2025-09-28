@@ -13,27 +13,47 @@ import { CommandExecutor } from '../../shared/commands/executor'
 export class IntegratedCommandService extends CommandService {
   constructor(private container: DIContainer) {
     super()
-    // Clear any existing task commands that were registered by the base class
-    this.clearTaskCommands()
-    this.registerIntegratedCommands()
+    try {
+      // Clear any existing commands that were registered by the base class
+      this.clearExistingCommands()
+      this.registerIntegratedCommands()
+    } catch (error) {
+      console.error('Failed to initialize IntegratedCommandService:', error)
+      // Continue initialization even if some commands fail to register
+    }
   }
 
-  private clearTaskCommands(): void {
-    // Unregister existing task commands that were registered by the base class
+  private clearExistingCommands(): void {
+    // Unregister existing commands that were registered by the base class
     const registry = this.getRegistry()
     registry.unregister('settask')
     registry.unregister('tasks')
     registry.unregister('newtask')
+    registry.unregister('help')
+    registry.unregister('?')
+    registry.unregister('commands')
   }
 
   private registerIntegratedCommands(): void {
-    // Override task commands with integrated versions
-    this.registerCommand(this.createIntegratedSetTaskCommand())
-    this.registerCommand(this.createIntegratedTasksCommand())
-    this.registerCommand(this.createIntegratedNewTaskCommand())
+    const commands = [
+      { name: 'settask', factory: () => this.createIntegratedSetTaskCommand() },
+      { name: 'tasks', factory: () => this.createIntegratedTasksCommand() },
+      { name: 'newtask', factory: () => this.createIntegratedNewTaskCommand() },
+      { name: 'search', factory: () => this.createIntegratedSearchCommand() },
+      { name: 'save', factory: () => this.createIntegratedSaveCommand() },
+      { name: 'open', factory: () => this.createIntegratedOpenCommand() },
+      { name: 'notes', factory: () => this.createIntegratedNotesCommand() },
+      { name: 'help', factory: () => this.createIntegratedHelpCommand() }
+    ]
 
-    // Register additional integrated commands
-    this.registerCommand(this.createIntegratedSearchCommand())
+    commands.forEach(({ name, factory }) => {
+      try {
+        this.registerCommand(factory())
+      } catch (error) {
+        console.error(`Failed to register command '${name}':`, error)
+        // Continue with other commands
+      }
+    })
   }
 
   private createIntegratedSearchCommand(): CommandDefinition {
@@ -112,6 +132,372 @@ export class IntegratedCommandService extends CommandService {
 
         return CommandExecutor.createSuccessResponse('text', confirmation, {
           followUp: [`/search --engine=${engineKey} ${query} site:`, '/search <new query>']
+        })
+      }
+    }
+  }
+
+  private createIntegratedSaveCommand(): CommandDefinition {
+    return {
+      name: 'save',
+      aliases: ['savepage', 'bookmark'],
+      description: 'Save the current page with tags and task',
+      category: 'page',
+      parameters: [
+        {
+          name: 'tags',
+          type: 'string',
+          required: false,
+          description: 'Comma-separated tags for the page'
+        },
+        {
+          name: 'task',
+          type: 'string',
+          required: false,
+          description: 'Task to associate with the page'
+        },
+        {
+          name: 'shortcut',
+          type: 'string',
+          required: false,
+          description: 'Shortcut name for quick access (@shortcut)'
+        }
+      ],
+      examples: [
+        '/save',
+        '/save --tags="research,documentation"',
+        '/save --task="project-alpha" --shortcut="docs"'
+      ],
+
+      execute: async (params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> => {
+        try {
+          // Get current tab info
+          const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true })
+          if (!currentTab || !currentTab.url) {
+            return CommandExecutor.createErrorResponse(
+              'No active tab found',
+              'NO_ACTIVE_TAB'
+            )
+          }
+
+          // Parse parameters
+          const tags = params.tags ? (params.tags as string).split(',').map(t => t.trim()).filter(Boolean) : []
+          const taskName = params.task as string || await this.getCurrentActiveTask() || undefined
+          const shortcut = params.shortcut as string || undefined
+
+          // Save the page
+          const savedPage = await this.container.pageUseCases.savePage({
+            url: currentTab.url,
+            title: currentTab.title || 'Untitled',
+            tags,
+            taskName,
+            shortcut,
+            source: 'command'
+          })
+
+          const message = `✅ Saved: ${savedPage.title}`
+          const details = []
+          if (tags.length > 0) details.push(`Tags: ${tags.join(', ')}`)
+          if (taskName) details.push(`Task: ${taskName}`)
+          if (shortcut) details.push(`Shortcut: @${shortcut}`)
+
+          const fullMessage = details.length > 0
+            ? `${message}\n${details.join(' | ')}`
+            : message
+
+          if (context.source === 'omnibox') {
+            return CommandExecutor.createNavigationResponse('home', fullMessage)
+          }
+
+          return CommandExecutor.createSuccessResponse('text', fullMessage, {
+            followUp: ['/open @' + (shortcut || savedPage.title), '/notes --task']
+          })
+
+        } catch (error) {
+          return CommandExecutor.createErrorResponse(
+            error instanceof Error ? error.message : 'Failed to save page',
+            'SAVE_ERROR'
+          )
+        }
+      }
+    }
+  }
+
+  private createIntegratedOpenCommand(): CommandDefinition {
+    return {
+      name: 'open',
+      aliases: ['go', 'navigate'],
+      description: 'Open a saved page by shortcut or search',
+      category: 'navigation',
+      parameters: [
+        {
+          name: 'target',
+          type: 'string',
+          required: false,
+          description: 'Page shortcut (@shortcut) or search term'
+        }
+      ],
+      examples: [
+        '/open @docs',
+        '/open github',
+        '/open "project documentation"'
+      ],
+
+      execute: async (params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> => {
+        try {
+          const target = params._positional[0] || params.target as string
+          if (!target) {
+            return CommandExecutor.createErrorResponse(
+              'Please specify a page to open',
+              'MISSING_TARGET',
+              '/open @shortcut or /open "search term"'
+            )
+          }
+
+          let page = null
+
+          // Check if it's a shortcut (starts with @)
+          if (target.startsWith('@')) {
+            const shortcut = target.slice(1)
+            const pages = await this.container.pageService.getByShortcut(shortcut)
+            page = pages[0] || null
+          } else {
+            // Search for the page
+            const searchResults = await this.container.searchService.searchPages(target, 1)
+            page = searchResults[0] || null
+          }
+
+          if (!page) {
+            return CommandExecutor.createErrorResponse(
+              `No page found for: ${target}`,
+              'PAGE_NOT_FOUND',
+              'Try /open @shortcut or search with different terms'
+            )
+          }
+
+          // Open the page
+          await chrome.tabs.create({ url: page.url })
+
+          return CommandExecutor.createSuccessResponse('text',
+            `✅ Opened: ${page.title}`,
+            { followUp: ['/save --tags', '/notes --page'] }
+          )
+
+        } catch (error) {
+          return CommandExecutor.createErrorResponse(
+            error instanceof Error ? error.message : 'Failed to open page',
+            'OPEN_ERROR'
+          )
+        }
+      }
+    }
+  }
+
+  private createIntegratedNotesCommand(): CommandDefinition {
+    return {
+      name: 'notes',
+      aliases: ['shownotes', 'listnotes'],
+      description: 'Show notes by task, tag, or search',
+      category: 'note',
+      parameters: [
+        {
+          name: 'task',
+          type: 'string',
+          required: false,
+          description: 'Show notes for specific task'
+        },
+        {
+          name: 'tag',
+          type: 'string',
+          required: false,
+          description: 'Show notes with specific tag'
+        },
+        {
+          name: 'search',
+          type: 'string',
+          required: false,
+          description: 'Search notes content'
+        },
+        {
+          name: 'limit',
+          type: 'number',
+          required: false,
+          description: 'Maximum number of notes to show',
+          defaultValue: 10
+        }
+      ],
+      examples: [
+        '/notes',
+        '/notes --task="project-alpha"',
+        '/notes --tag="research"',
+        '/notes --search="important meeting"'
+      ],
+
+      execute: async (params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> => {
+        try {
+          const taskName = params.task as string
+          const tag = params.tag as string
+          const searchTerm = params.search as string
+          const limit = (params.limit as number) || 10
+
+          let notes = []
+
+          if (taskName) {
+            notes = await this.container.noteService.getByTask(taskName)
+          } else if (tag) {
+            notes = await this.container.noteService.getByTags([tag])
+          } else if (searchTerm) {
+            notes = await this.container.noteService.search(searchTerm)
+          } else {
+            // Get recent notes
+            notes = await this.container.noteService.getAll()
+            notes = notes.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          }
+
+          notes = notes.slice(0, limit)
+
+          if (notes.length === 0) {
+            const filter = taskName ? `task "${taskName}"` :
+                         tag ? `tag "${tag}"` :
+                         searchTerm ? `search "${searchTerm}"` : 'any criteria'
+
+            const message = `📝 No notes found for ${filter}`
+
+            if (context.source === 'omnibox') {
+              return CommandExecutor.createNavigationResponse('chat', message)
+            }
+
+            return CommandExecutor.createSuccessResponse('text', message, {
+              followUp: ['/help notes', '/tasks']
+            })
+          }
+
+          // Format notes for display
+          const notesList = notes.map((note, index) => {
+            const preview = note.content.slice(0, 50) + (note.content.length > 50 ? '...' : '')
+            const taskInfo = note.tasks.length > 0 ? ` [${note.tasks.join(', ')}]` : ''
+            return `${index + 1}. ${preview}${taskInfo}`
+          }).join('\n')
+
+          const title = `📝 Found ${notes.length} note(s)`
+          const filter = taskName ? ` for task "${taskName}"` :
+                        tag ? ` with tag "${tag}"` :
+                        searchTerm ? ` matching "${searchTerm}"` : ''
+          const fullTitle = `${title}${filter}`
+          const fullContent = `${fullTitle}:\n\n${notesList}`
+
+          if (context.source === 'omnibox') {
+            return CommandExecutor.createNavigationResponse('chat', fullContent)
+          }
+
+          return CommandExecutor.createSuccessResponse('list', {
+            title: fullTitle,
+            items: notes,
+            formatted: notesList
+          }, {
+            followUp: ['/notes --task', '/help notes']
+          })
+
+        } catch (error) {
+          return CommandExecutor.createErrorResponse(
+            error instanceof Error ? error.message : 'Failed to fetch notes',
+            'NOTES_ERROR'
+          )
+        }
+      }
+    }
+  }
+
+  private createIntegratedHelpCommand(): CommandDefinition {
+    return {
+      name: 'help',
+      aliases: ['?', 'commands'],
+      description: 'Show available commands and usage help',
+      category: 'system',
+      parameters: [
+        {
+          name: 'command',
+          type: 'string',
+          required: false,
+          description: 'Get detailed help for a specific command'
+        }
+      ],
+      examples: [
+        '/help',
+        '/help settask',
+        '/? search'
+      ],
+
+      execute: async (params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> => {
+        const specificCommand = params._positional[0] || params.command as string
+
+        if (specificCommand) {
+          // Get help for specific command
+          const registry = this.getRegistry()
+          const command = registry.getCommand(specificCommand)
+
+          if (!command) {
+            return CommandExecutor.createErrorResponse(
+              `Command '${specificCommand}' not found`,
+              'COMMAND_NOT_FOUND',
+              'Use /help to see all available commands'
+            )
+          }
+
+          const aliases = command.aliases.length > 0 ? ` (aliases: ${command.aliases.join(', ')})` : ''
+          const params_info = command.parameters
+            .map(p => `  --${p.name}: ${p.description}${p.required ? ' (required)' : ''}`)
+            .join('\n')
+
+          const examples = command.examples.length > 0
+            ? `\nExamples:\n${command.examples.map(ex => `  ${ex}`).join('\n')}`
+            : ''
+
+          const helpText = `/${command.name}${aliases}\n${command.description}\n\nParameters:\n${params_info}${examples}`
+
+          return CommandExecutor.createSuccessResponse('text', helpText)
+        }
+
+        // Show general help
+        const registry = this.getRegistry()
+        const allCommands = registry.getAllCommands()
+        const categories = new Map<string, any[]>()
+
+        // Group commands by category
+        allCommands.forEach(cmd => {
+          if (!categories.has(cmd.category)) {
+            categories.set(cmd.category, [])
+          }
+          categories.get(cmd.category)!.push(cmd)
+        })
+
+        let helpText = '🤖 Superowser Commands\n\n'
+
+        // Sort categories for consistent display
+        const sortedCategories = Array.from(categories.entries()).sort(([a], [b]) => {
+          const order = ['task', 'page', 'note', 'navigation', 'system']
+          return order.indexOf(a) - order.indexOf(b)
+        })
+
+        sortedCategories.forEach(([category, commands]) => {
+          const categoryName = category.charAt(0).toUpperCase() + category.slice(1)
+          helpText += `📁 ${categoryName} Commands:\n`
+
+          commands.forEach(cmd => {
+            helpText += `  /${cmd.name} - ${cmd.description}\n`
+          })
+          helpText += '\n'
+        })
+
+        helpText += 'Use /help <command> for detailed information about a specific command.\n'
+        helpText += '\nTip: Use quotes around multi-word arguments: /settask "my task"'
+
+        if (context.source === 'omnibox') {
+          return CommandExecutor.createNavigationResponse('chat', 'Command help displayed in chat')
+        }
+
+        return CommandExecutor.createSuccessResponse('text', helpText, {
+          followUp: ['/help settask', '/help save', '/help search']
         })
       }
     }
@@ -309,19 +695,15 @@ export class IntegratedCommandService extends CommandService {
 
           if (tasks.length === 0) {
             const message = searchTerm
-              ? `No tasks found matching "${searchTerm}"`
-              : 'No tasks found'
+              ? `📋 No tasks found matching "${searchTerm}"`
+              : '📋 No tasks found'
+
+            if (context.source === 'omnibox') {
+              return CommandExecutor.createNavigationResponse('chat', message)
+            }
 
             return CommandExecutor.createSuccessResponse('text', message, {
-              actions: [
-                {
-                  id: 'create-task',
-                  label: 'Create First Task',
-                  type: 'command',
-                  action: '/settask --create',
-                  style: 'primary'
-                }
-              ]
+              followUp: ['/settask "new task"', '/help tasks']
             })
           }
 
@@ -330,11 +712,16 @@ export class IntegratedCommandService extends CommandService {
             `• ${task.name}${task.description ? ` - ${task.description}` : ''}`
           ).join('\n')
 
+          const title = `📋 Found ${tasks.length} task(s)`
+          const searchInfo = searchTerm ? ` matching "${searchTerm}"` : ''
+          const fullTitle = `${title}${searchInfo}`
+          const fullContent = `${fullTitle}:\n\n${taskList}`
+
           if (context.source === 'omnibox') {
-            return CommandExecutor.createNavigationResponse('tasks', `Found ${tasks.length} task(s)`)
+            return CommandExecutor.createNavigationResponse('chat', fullContent)
           } else {
             return CommandExecutor.createSuccessResponse('list', {
-              title: `${tasks.length} task(s) found`,
+              title: fullTitle,
               items: tasks,
               formatted: taskList
             })
