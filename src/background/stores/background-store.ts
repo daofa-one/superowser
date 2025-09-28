@@ -84,6 +84,7 @@ export interface UserContextState {
     autoDetectChatMessages: boolean
     preferredSearchEngine: string
     preferredAiProvider: string
+    reuseAiTab: boolean
   }
 
   // Analytics/insights
@@ -136,7 +137,8 @@ export const useBackgroundStore = defineStore('background', {
         autoDetectSearchQueries: true,
         autoDetectChatMessages: true,
         preferredSearchEngine: 'google',
-        preferredAiProvider: 'chatgpt'
+        preferredAiProvider: 'chatgpt',
+        reuseAiTab: false
       },
 
       stats: {
@@ -223,6 +225,9 @@ export const useBackgroundStore = defineStore('background', {
           if (!this.user.settings.preferredAiProvider) {
             this.user.settings.preferredAiProvider = 'chatgpt'
           }
+          if (typeof this.user.settings.reuseAiTab !== 'boolean') {
+            this.user.settings.reuseAiTab = false
+          }
           this.broadcastStateUpdate('user.settings', this.user.settings)
         }
       } catch (error) {
@@ -269,6 +274,22 @@ export const useBackgroundStore = defineStore('background', {
         await chrome.storage.local.set({ userSettings: this.user.settings })
       } catch (error) {
         console.warn('[Background Store] Failed to persist AI provider setting:', error)
+      }
+
+      this.broadcastStateUpdate('user.settings', this.user.settings)
+    },
+
+    async setAiTabReusePreference(reuse: boolean) {
+      if (this.user.settings.reuseAiTab === reuse) {
+        return
+      }
+
+      this.user.settings.reuseAiTab = reuse
+
+      try {
+        await chrome.storage.local.set({ userSettings: this.user.settings })
+      } catch (error) {
+        console.warn('[Background Store] Failed to persist AI tab preference:', error)
       }
 
       this.broadcastStateUpdate('user.settings', this.user.settings)

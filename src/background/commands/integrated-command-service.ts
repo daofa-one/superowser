@@ -142,36 +142,58 @@ export class IntegratedCommandService extends CommandService {
   }
 
   private createIntegratedAiCommand(): CommandDefinition {
-    const providers: Record<string, { label: string; buildUrl: (query?: string) => string; supportsQuery?: boolean }> = {
+    const matchesHost = (value: string | undefined | null, hosts: string[]): boolean => {
+      if (!value) {
+        return false
+      }
+      try {
+        const hostname = new URL(value).hostname.toLowerCase()
+        return hosts.some(host => hostname === host || hostname.endsWith(`.${host}`))
+      } catch {
+        return false
+      }
+    }
+
+    const providers: Record<string, {
+      label: string
+      buildUrl: (query?: string) => string
+      supportsQuery?: boolean
+      matches: (url?: string | null) => boolean
+    }> = {
       chatgpt: {
         label: 'ChatGPT',
         buildUrl: (query) => query && query.length > 0
           ? `https://chatgpt.com/?q=${encodeURIComponent(query)}`
           : 'https://chatgpt.com/',
-        supportsQuery: true
+        supportsQuery: true,
+        matches: (url) => matchesHost(url, ['chatgpt.com', 'chat.openai.com'])
       },
       claude: {
         label: 'Claude',
         buildUrl: () => 'https://claude.ai/new',
-        supportsQuery: false
+        supportsQuery: false,
+        matches: (url) => matchesHost(url, ['claude.ai'])
       },
       perplexity: {
         label: 'Perplexity',
         buildUrl: (query) => query && query.length > 0
           ? `https://www.perplexity.ai/search?q=${encodeURIComponent(query)}`
-          : 'https://www.perplexity.ai/'
+          : 'https://www.perplexity.ai/',
+        matches: (url) => matchesHost(url, ['perplexity.ai'])
       },
       copilot: {
         label: 'Copilot',
         buildUrl: (query) => query && query.length > 0
           ? `https://copilot.microsoft.com/?q=${encodeURIComponent(query)}`
-          : 'https://copilot.microsoft.com/'
+          : 'https://copilot.microsoft.com/',
+        matches: (url) => matchesHost(url, ['copilot.microsoft.com'])
       },
       gemini: {
         label: 'Gemini',
         buildUrl: (query) => query && query.length > 0
           ? `https://gemini.google.com/app?q=${encodeURIComponent(query)}`
-          : 'https://gemini.google.com/app'
+          : 'https://gemini.google.com/app',
+        matches: (url) => matchesHost(url, ['gemini.google.com'])
       }
     }
 
@@ -219,14 +241,42 @@ export class IntegratedCommandService extends CommandService {
         const provider = providers[providerKey]
         const url = provider.buildUrl(query)
 
-        try {
-          await chrome.tabs.create({ url })
-        } catch (error) {
-          return CommandExecutor.createErrorResponse(
-            'Unable to open assistant in a new tab',
-            'AI_NAVIGATION_FAILED',
-            'Check browser permissions and try again'
-          )
+        const settings = this.container.backgroundStore?.user?.settings
+        const reuseExisting = settings?.reuseAiTab === true
+
+        let reusedExistingTab = false
+
+        if (reuseExisting) {
+          try {
+            const tabs = await chrome.tabs.query({})
+            const existingTab = tabs.find(tab => provider.matches(tab.url || (tab as any)?.pendingUrl))
+
+            if (existingTab && existingTab.id != null) {
+              reusedExistingTab = true
+
+              if (provider.supportsQuery && query) {
+                await chrome.tabs.update(existingTab.id, { url, active: true })
+              } else {
+                await chrome.tabs.update(existingTab.id, { active: true })
+              }
+
+              await chrome.windows.update(existingTab.windowId, { focused: true })
+            }
+          } catch (error) {
+            console.warn('AI command failed to reuse assistant tab:', error)
+          }
+        }
+
+        if (!reusedExistingTab) {
+          try {
+            await chrome.tabs.create({ url })
+          } catch (error) {
+            return CommandExecutor.createErrorResponse(
+              'Unable to open assistant in a new tab',
+              'AI_NAVIGATION_FAILED',
+              'Check browser permissions and try again'
+            )
+          }
         }
 
         const providerLabel = provider.label

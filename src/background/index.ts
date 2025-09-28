@@ -1002,6 +1002,9 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 if (message.data?.preferredAiProvider) {
                     await backgroundStore.setPreferredAiProvider(message.data.preferredAiProvider);
                 }
+                if (typeof message.data?.reuseAiTab === 'boolean') {
+                    await backgroundStore.setAiTabReusePreference(message.data.reuseAiTab);
+                }
                 data = backgroundStore.user.settings;
                 break;
 

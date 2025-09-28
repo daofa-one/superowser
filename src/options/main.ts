@@ -3,6 +3,7 @@ import './style.css'
 type UserSettings = {
   preferredSearchEngine?: string
   preferredAiProvider?: string
+  reuseAiTab?: boolean
 }
 
 type SuccessResponse<T> = {
@@ -21,6 +22,7 @@ const engineSelect = document.getElementById('search-engine-select') as HTMLSele
 const engineStatusMessage = document.getElementById('search-status-message') as HTMLParagraphElement | null
 const aiSelect = document.getElementById('ai-provider-select') as HTMLSelectElement | null
 const aiStatusMessage = document.getElementById('ai-status-message') as HTMLParagraphElement | null
+const aiReuseToggle = document.getElementById('ai-reuse-toggle') as HTMLInputElement | null
 
 if (!engineSelect) {
   throw new Error('Search engine select element not found')
@@ -28,6 +30,10 @@ if (!engineSelect) {
 
 if (!aiSelect) {
   throw new Error('AI provider select element not found')
+}
+
+if (!aiReuseToggle) {
+  throw new Error('AI tab reuse toggle element not found')
 }
 
 const showStatus = (element: HTMLParagraphElement | null, message: string, tone: 'info' | 'success' | 'error' = 'info') => {
@@ -68,12 +74,15 @@ const loadSettings = async () => {
     aiSelect.value = ['chatgpt', 'claude', 'perplexity', 'copilot', 'gemini'].includes(preferredAi)
       ? preferredAi
       : 'chatgpt'
+
+    aiReuseToggle.checked = Boolean(settings.reuseAiTab)
   } catch (error) {
     console.error('[Options] Failed to load settings:', error)
     showStatus(engineStatusMessage, 'Could not load settings. Using defaults.', 'error')
     engineSelect.value = 'google'
     showStatus(aiStatusMessage, 'Could not load assistant setting. Using ChatGPT.', 'error')
     aiSelect.value = 'chatgpt'
+    aiReuseToggle.checked = false
   }
 }
 
@@ -114,6 +123,27 @@ aiSelect.addEventListener('change', (event) => {
   const target = event.target as HTMLSelectElement
   const value = target.value
   persistAiProvider(value)
+})
+
+const persistAiReuse = async (reuse: boolean) => {
+  try {
+    await sendMessage<UserSettings>({
+      type: 'UPDATE_USER_SETTINGS',
+      data: { reuseAiTab: reuse }
+    })
+    const message = reuse
+      ? 'Saved. /ai will reuse an existing assistant tab when available.'
+      : 'Saved. /ai will always open a new assistant tab.'
+    showStatus(aiStatusMessage, message, 'success')
+  } catch (error) {
+    console.error('[Options] Failed to save AI tab behaviour:', error)
+    showStatus(aiStatusMessage, 'Failed to update tab behaviour. Please try again.', 'error')
+  }
+}
+
+aiReuseToggle.addEventListener('change', (event) => {
+  const target = event.target as HTMLInputElement
+  persistAiReuse(target.checked)
 })
 
 loadSettings()

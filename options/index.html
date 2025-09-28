@@ -39,6 +39,14 @@
             <option value="gemini">Gemini</option>
           </select>
         </label>
+        <div class="field">
+          <span class="field-label">Tab behaviour</span>
+          <label class="field-toggle" for="ai-reuse-toggle">
+            <input type="checkbox" id="ai-reuse-toggle" />
+            <span>Reuse an existing assistant tab instead of opening a new one</span>
+          </label>
+          <p class="field-helper">When enabled, Superowser will focus the first matching assistant tab. If none is open, a new tab is created.</p>
+        </div>
         <p id="ai-status-message" class="status"></p>
       </section>
     </div>
