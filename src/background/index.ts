@@ -930,6 +930,36 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 data = { success: true };
                 break;
 
+            // Document-related handlers
+            case 'GET_DOCUMENT':
+                data = await container.documentsUseCases.getDocument(message.data.documentId);
+                break;
+            case 'CREATE_DOCUMENT':
+                data = await container.documentsUseCases.createDocument(message.data);
+                break;
+            case 'UPDATE_DOCUMENT':
+                data = await container.documentsUseCases.updateDocument(message.data.documentId, message.data.updates);
+                break;
+            case 'DELETE_DOCUMENT':
+                await container.documentsUseCases.deleteDocument(message.data.documentId);
+                data = { success: true };
+                break;
+            case 'SAVE_DOCUMENT_VERSION':
+                data = await container.documentsUseCases.createVersion(message.data);
+                break;
+            case 'GET_TASK_DOCUMENTS':
+                data = await container.documentsUseCases.listDocumentsByTask(message.data.taskId);
+                break;
+            case 'GET_TASK':
+                data = await container.taskUseCases.getTaskById(message.data.taskId);
+                break;
+            case 'GET_TASK_PAGES':
+                data = await container.taskUseCases.getPagesByTaskId(message.data.taskId);
+                break;
+            case 'GET_TASK_NOTES':
+                data = await container.taskUseCases.getNotesByTaskId(message.data.taskId);
+                break;
+
             case 'GET_CURRENT_TAB_INFO':
                 data = await getCurrentTab();
                 break;

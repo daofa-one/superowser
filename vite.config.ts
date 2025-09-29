@@ -22,6 +22,7 @@ export default defineConfig({
       input: {
         sidepanel: 'sidepanel/index.html',
         options: 'options/index.html',
+        authoring: 'authoring/index.html',
       },
     },
   },
@@ -34,7 +35,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['vue'],
+    include: ['vue', 'monaco-editor'],
     exclude: ['vue-demi'],
   },
 })

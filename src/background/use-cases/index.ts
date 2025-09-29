@@ -3,3 +3,4 @@
 export { PageUseCases } from './page-use-cases'
 export { TaskUseCases } from './task-use-cases'
 export { SearchUseCases } from './search-use-cases'
+export { DocumentsUseCases } from './documents-use-cases'

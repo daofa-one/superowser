@@ -21,6 +21,32 @@ export interface PageEntry {
   updatedAt: Date
 }
 
+export interface DocumentEntry {
+  id: string
+  title: string
+  taskId?: string
+  status: 'draft' | 'review' | 'final' | 'archived'
+  activeVersionId?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface DocumentVersionEntry {
+  id: string
+  documentId: string
+  parentVersionId?: string
+  title?: string
+  summary?: string
+  content: string
+  createdAt: Date
+  createdBy: 'user' | 'ai' | 'import'
+  sources?: Array<{
+    noteId?: string
+    pageId?: string
+    snippet?: string
+  }>
+}
+
 export type NoteCategory = 'note' | 'plan' | 'brainstorm' | 'highlight'
 
 export interface NoteEntry {
@@ -85,6 +111,27 @@ export interface SaveNoteRequest {
     end: number
     selector?: string
   }
+}
+
+export interface SaveDocumentRequest {
+  title: string
+  taskId?: string
+  status?: DocumentEntry['status']
+  initialContent?: string
+}
+
+export interface SaveDocumentVersionRequest {
+  documentId: string
+  title?: string
+  summary?: string
+  content: string
+  parentVersionId?: string
+  createdBy?: 'user' | 'ai' | 'import'
+  sources?: Array<{
+    noteId?: string
+    pageId?: string
+    snippet?: string
+  }>
 }
 
 export interface SearchQuery {

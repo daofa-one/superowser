@@ -61,4 +61,16 @@ export default defineManifest(async (env) => ({
     'omnibox',
     'scripting'
   ],
+  web_accessible_resources: [
+    {
+      resources: [
+        'authoring/index.html',
+        'assets/*'
+      ],
+      matches: ['<all_urls>']
+    }
+  ],
+  content_security_policy: {
+    extension_pages: "script-src 'self'; object-src 'self';"
+  },
 }))

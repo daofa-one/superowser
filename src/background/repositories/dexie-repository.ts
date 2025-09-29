@@ -5,15 +5,21 @@ import {
   PageEntry,
   NoteEntry,
   TaskEntry,
+  DocumentEntry,
+  DocumentVersionEntry,
   SavePageRequest,
   SaveNoteRequest,
   NoteCategory,
-  SearchContextEntry
+  SearchContextEntry,
+  SaveDocumentRequest,
+  SaveDocumentVersionRequest
 } from '../../shared/models'
 import {
   IPageService,
   INoteService,
-  ITaskService
+  ITaskService,
+  IDocumentService,
+  IDocumentVersionService
 } from '../../shared/services/interfaces'
 
 interface SuperowserDB extends Dexie {
@@ -21,6 +27,8 @@ interface SuperowserDB extends Dexie {
   notes: EntityTable<NoteEntry, 'id'>
   tasks: EntityTable<TaskEntry, 'id'>
   settings: EntityTable<{ key: string; value: any }, 'key'>
+  documents: EntityTable<DocumentEntry, 'id'>
+  documentVersions: EntityTable<DocumentVersionEntry, 'id'>
 }
 
 const db = new Dexie('SuperowserDB') as SuperowserDB
@@ -104,6 +112,21 @@ db.version(5).stores({
       page.searchContextHistory = [...page.searchContextHistory, normalizedContext]
         .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
         .slice(-10)
+    }
+  })
+})
+
+db.version(6).stores({
+  pages: '++id, url, title, *tags, shortcut, *tasks, createdAt, updatedAt',
+  notes: '++id, pageId, content, category, *tasks, createdAt, updatedAt',
+  tasks: '++id, name, isActive, createdAt, updatedAt',
+  settings: '++key',
+  documents: '++id, taskId, status, activeVersionId, createdAt, updatedAt',
+  documentVersions: '++id, documentId, parentVersionId, createdAt'
+}).upgrade(async trans => {
+  await trans.documentVersions.toCollection().modify(version => {
+    if (!version.createdBy) {
+      version.createdBy = 'user'
     }
   })
 })
@@ -325,6 +348,157 @@ export class DexiePageService implements IPageService {
       )
       .toArray()
     return results.map(mapPageEntry)
+  }
+}
+
+export class DexieDocumentService implements IDocumentService {
+  async create(request: SaveDocumentRequest): Promise<DocumentEntry> {
+    const nowDate = now()
+    const document: DocumentEntry = {
+      id: generateId(),
+      title: request.title,
+      taskId: request.taskId,
+      status: request.status ?? 'draft',
+      activeVersionId: undefined,
+      createdAt: nowDate,
+      updatedAt: nowDate
+    }
+
+    await db.documents.add(document)
+
+    if (request.initialContent) {
+      const initialVersion = await new DexieDocumentVersionService().create({
+        documentId: document.id,
+        content: request.initialContent,
+        createdBy: 'user'
+      })
+
+      await db.documents.update(document.id, {
+        activeVersionId: initialVersion.id,
+        updatedAt: now()
+      })
+
+      document.activeVersionId = initialVersion.id
+      document.updatedAt = now()
+    }
+
+    return document
+  }
+
+  async update(id: string, updates: Partial<DocumentEntry>): Promise<DocumentEntry> {
+    const payload: Partial<DocumentEntry> = {
+      ...updates,
+      updatedAt: now()
+    }
+
+    await db.documents.update(id, payload)
+    const updated = await this.getById(id)
+    if (!updated) throw new Error(`Document ${id} not found`)
+    return updated
+  }
+
+  async getById(id: string): Promise<DocumentEntry | null> {
+    const doc = await db.documents.get(id)
+    if (!doc) {
+      return null
+    }
+
+    return {
+      ...doc,
+      createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
+      updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt)
+    }
+  }
+
+  async getByTask(taskId: string): Promise<DocumentEntry[]> {
+    const docs = await db.documents.where('taskId').equals(taskId).toArray()
+    return docs.map(doc => ({
+      ...doc,
+      createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
+      updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt)
+    }))
+  }
+
+  async delete(id: string): Promise<void> {
+    await db.documentVersions.where('documentId').equals(id).delete()
+    await db.documents.delete(id)
+  }
+
+  async list(params: { taskId?: string; limit?: number; offset?: number } = {}): Promise<DocumentEntry[]> {
+    let collection = db.documents.orderBy('updatedAt').reverse()
+
+    if (params.taskId) {
+      collection = db.documents.where('taskId').equals(params.taskId).orderBy('updatedAt').reverse()
+    }
+
+    const results = await collection
+      .offset(params.offset ?? 0)
+      .limit(params.limit ?? 50)
+      .toArray()
+
+    return results.map(doc => ({
+      ...doc,
+      createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
+      updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt)
+    }))
+  }
+}
+
+export class DexieDocumentVersionService implements IDocumentVersionService {
+  async create(request: SaveDocumentVersionRequest): Promise<DocumentVersionEntry> {
+    const nowDate = now()
+    const version: DocumentVersionEntry = {
+      id: generateId(),
+      documentId: request.documentId,
+      parentVersionId: request.parentVersionId,
+      title: request.title,
+      summary: request.summary,
+      content: request.content,
+      createdAt: nowDate,
+      createdBy: request.createdBy ?? 'user',
+      sources: request.sources
+    }
+
+    await db.documentVersions.add(version)
+
+    await db.documents.update(request.documentId, {
+      activeVersionId: version.id,
+      updatedAt: now()
+    })
+
+    return version
+  }
+
+  async getById(id: string): Promise<DocumentVersionEntry | null> {
+    const version = await db.documentVersions.get(id)
+    if (!version) {
+      return null
+    }
+
+    return {
+      ...version,
+      createdAt: version.createdAt instanceof Date ? version.createdAt : new Date(version.createdAt)
+    }
+  }
+
+  async getByDocument(documentId: string, limit = 50): Promise<DocumentVersionEntry[]> {
+    const versions = await db.documentVersions
+      .where('documentId')
+      .equals(documentId)
+      .reverse()
+      .sortBy('createdAt')
+
+    return versions
+      .reverse()
+      .slice(0, limit)
+      .map(version => ({
+        ...version,
+        createdAt: version.createdAt instanceof Date ? version.createdAt : new Date(version.createdAt)
+      }))
+  }
+
+  async delete(id: string): Promise<void> {
+    await db.documentVersions.delete(id)
   }
 }
 

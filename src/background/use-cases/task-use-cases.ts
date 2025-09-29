@@ -71,6 +71,44 @@ export class TaskUseCases {
     return this.taskService.getActive()
   }
 
+  async getTaskById(taskId: string): Promise<TaskEntry | null> {
+    if (!taskId) {
+      return null
+    }
+    const task = await this.taskService.getById(taskId)
+    if (!task) {
+      return null
+    }
+    const normalizedName = this.normalizeName(task.name, 'load task by id')
+    if (normalizedName !== task.name) {
+      await this.taskService.update(task.id, { name: normalizedName })
+      task.name = normalizedName
+    }
+    return task
+  }
+
+  async getPagesByTaskId(taskId: string): Promise<PageEntry[]> {
+    if (!taskId) {
+      return []
+    }
+    const task = await this.getTaskById(taskId)
+    if (!task) {
+      return []
+    }
+    return this.pageService.getByTask(task.name)
+  }
+
+  async getNotesByTaskId(taskId: string): Promise<NoteEntry[]> {
+    if (!taskId) {
+      return []
+    }
+    const task = await this.getTaskById(taskId)
+    if (!task) {
+      return []
+    }
+    return this.noteService.getByTask(task.name)
+  }
+
   async getTaskWithContent(taskName: string): Promise<{
     task: TaskEntry | null
     pages: PageEntry[]

@@ -31,11 +31,7 @@ let suggestionRequestId = 0
 const showSaveAiModal = ref(false)
 const aiDraftContent = ref('')
 const aiDraftIncludeCurrentTask = ref(false)
-const aiSelectedTasks = ref<string[]>([])
-const aiTaskInput = ref('')
-const filteredAiTasks = ref<string[]>([])
-const showAiTaskSuggestions = ref(false)
-const aiAvailableTasks = ref<string[]>([])
+const aiDraftExtraTasks = ref('')
 const aiDraftCategory = ref<NoteCategory>('brainstorm')
 const aiDraftComment = ref('')
 const isSavingAiNote = ref(false)
@@ -275,62 +271,16 @@ const availableAiTasks = computed<string[]>(() => {
   return Array.from(taskSet)
 })
 
-const filterAiTasks = () => {
-  const query = aiTaskInput.value.trim().toLowerCase()
-  const available = availableAiTasks.value
-    .filter(task => !aiSelectedTasks.value.includes(task))
-
-  if (!query) {
-    filteredAiTasks.value = available.slice(0, 10)
-  } else {
-    filteredAiTasks.value = available
-      .filter(task => task.toLowerCase().includes(query))
-      .slice(0, 10)
-  }
-
-  showAiTaskSuggestions.value = filteredAiTasks.value.length > 0 || (!!query && !aiSelectedTasks.value.includes(aiTaskInput.value.trim()))
-}
-
-watch(() => store.cache.recentTasks, () => {
-  filterAiTasks()
-})
-
-const loadAiTasks = async () => {
-  try {
-    const response = await store.sendMessage({ type: 'GET_TASKS' })
-    if (response?.type === 'SUCCESS' && Array.isArray(response.data)) {
-      aiAvailableTasks.value = response.data
-        .map((task: any) => typeof task?.name === 'string' ? task.name : '')
-        .filter((name: string) => name.length > 0)
-    }
-  } catch (error) {
-    console.warn('Failed to load AI task suggestions:', error)
-  } finally {
-    filterAiTasks()
-  }
-}
-
 watch(hasCurrentTask, (present) => {
   if (!present) {
     aiDraftIncludeCurrentTask.value = false
   }
 })
 
-watch(aiTaskInput, () => {
-  filterAiTasks()
-})
-
-watch(aiSelectedTasks, () => {
-  filterAiTasks()
-}, { deep: true })
-
-const openSaveAiModal = async (bubble: ChatBubble) => {
+const openSaveAiModal = (bubble: ChatBubble) => {
   aiDraftContent.value = bubble.content.trim()
   aiDraftIncludeCurrentTask.value = hasCurrentTask.value
-  aiSelectedTasks.value = []
-  aiTaskInput.value = ''
-  filteredAiTasks.value = []
-  showAiTaskSuggestions.value = false
+  aiDraftExtraTasks.value = ''
   aiDraftCategory.value = 'brainstorm'
   aiDraftComment.value = bubble.commandArgs ? `Prompt: ${bubble.commandArgs}` : ''
 
@@ -339,17 +289,13 @@ const openSaveAiModal = async (bubble: ChatBubble) => {
   }
 
   showSaveAiModal.value = true
-  void loadAiTasks()
 }
 
 const closeSaveAiModal = () => {
   showSaveAiModal.value = false
   aiDraftContent.value = ''
   aiDraftIncludeCurrentTask.value = false
-  aiSelectedTasks.value = []
-  aiTaskInput.value = ''
-  filteredAiTasks.value = []
-  showAiTaskSuggestions.value = false
+  aiDraftExtraTasks.value = ''
   aiDraftCategory.value = 'brainstorm'
   aiDraftComment.value = ''
 }

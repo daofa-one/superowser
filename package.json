@@ -12,8 +12,10 @@
         "preview": "vite preview"
     },
     "dependencies": {
+        "@guolao/vue-monaco-editor": "^1.5.5",
         "dexie": "^4.2.0",
         "fuse.js": "^7.1.0",
+        "monaco-editor": "^0.53.0",
         "pinia": "^2.1.7",
         "vue": "^3.4.0"
     },

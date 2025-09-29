@@ -3,7 +3,9 @@
 import {
   DexiePageService,
   DexieNoteService,
-  DexieTaskService
+  DexieTaskService,
+  DexieDocumentService,
+  DexieDocumentVersionService
 } from './repositories/dexie-repository'
 
 import {
@@ -12,12 +14,15 @@ import {
   SearchUseCases
 } from './use-cases'
 import { NotesUseCases } from './use-cases/notes-use-cases'
+import { DocumentsUseCases } from './use-cases/documents-use-cases'
 
 import {
   IPageService,
   INoteService,
   ITaskService,
-  ISearchService
+  ISearchService,
+  IDocumentService,
+  IDocumentVersionService
 } from '../shared/services/interfaces'
 import { fuzzyMatchScore } from '../shared/utils'
 import { TaskEntry } from '../shared/models'
@@ -284,12 +289,15 @@ export class DIContainer {
   private _pageService: IPageService
   private _noteService: INoteService
   private _taskService: ITaskService
+  private _documentService: IDocumentService
+  private _documentVersionService: IDocumentVersionService
   private _searchService: ISearchService
 
   private _pageUseCases: PageUseCases
   private _taskUseCases: TaskUseCases
   private _searchUseCases: SearchUseCases
   private _notesUseCases: NotesUseCases
+  private _documentsUseCases: DocumentsUseCases
   private _fuzzySearchService: FuzzySearchService
   private _analyticsService: AnalyticsService
   private _mlService: MLService
@@ -301,6 +309,8 @@ export class DIContainer {
     this._pageService = new DexiePageService()
     this._noteService = new DexieNoteService()
     this._taskService = new DexieTaskService()
+    this._documentService = new DexieDocumentService()
+    this._documentVersionService = new DexieDocumentVersionService()
     this._fuzzySearchService = new FuzzySearchService()
     this._analyticsService = new AnalyticsService()
     this._mlService = new MLService()
@@ -337,6 +347,12 @@ export class DIContainer {
 
     this._notesUseCases = new NotesUseCases(
       this._noteService,
+      this._taskService
+    )
+
+    this._documentsUseCases = new DocumentsUseCases(
+      this._documentService,
+      this._documentVersionService,
       this._taskService
     )
 
@@ -385,6 +401,13 @@ export class DIContainer {
       this._taskService,
       backgroundStore
     )
+
+    this._documentsUseCases = new DocumentsUseCases(
+      this._documentService,
+      this._documentVersionService,
+      this._taskService,
+      backgroundStore
+    )
   }
 
   // Getters for services
@@ -398,6 +421,14 @@ export class DIContainer {
 
   get taskService(): ITaskService {
     return this._taskService
+  }
+
+  get documentService(): IDocumentService {
+    return this._documentService
+  }
+
+  get documentVersionService(): IDocumentVersionService {
+    return this._documentVersionService
   }
 
   get searchService(): ISearchService {
@@ -419,6 +450,10 @@ export class DIContainer {
 
   get notesUseCases(): NotesUseCases {
     return this._notesUseCases
+  }
+
+  get documentsUseCases(): DocumentsUseCases {
+    return this._documentsUseCases
   }
 
   get fuzzySearchService(): FuzzySearchService {

@@ -4,9 +4,13 @@ import {
   PageEntry,
   NoteEntry,
   TaskEntry,
+  DocumentEntry,
+  DocumentVersionEntry,
   SearchResult,
   SavePageRequest,
   SaveNoteRequest,
+  SaveDocumentRequest,
+  SaveDocumentVersionRequest,
   SearchQuery
 } from '../models'
 
@@ -33,6 +37,22 @@ export interface INoteService {
   delete(id: string): Promise<void>
   search(query: string): Promise<NoteEntry[]>
   getAll(limit?: number, offset?: number): Promise<NoteEntry[]>
+}
+
+export interface IDocumentService {
+  create(data: SaveDocumentRequest): Promise<DocumentEntry>
+  update(id: string, updates: Partial<DocumentEntry>): Promise<DocumentEntry>
+  getById(id: string): Promise<DocumentEntry | null>
+  getByTask(taskId: string): Promise<DocumentEntry[]>
+  delete(id: string): Promise<void>
+  list(params?: { taskId?: string; limit?: number; offset?: number }): Promise<DocumentEntry[]>
+}
+
+export interface IDocumentVersionService {
+  create(data: SaveDocumentVersionRequest): Promise<DocumentVersionEntry>
+  getById(id: string): Promise<DocumentVersionEntry | null>
+  getByDocument(documentId: string, limit?: number): Promise<DocumentVersionEntry[]>
+  delete(id: string): Promise<void>
 }
 
 export interface ITaskService {

@@ -46,6 +46,8 @@ export class IntegratedCommandService extends CommandService {
       { name: 'save', factory: () => this.createIntegratedSaveCommand() },
       { name: 'open', factory: () => this.createIntegratedOpenCommand() },
       { name: 'notes', factory: () => this.createIntegratedNotesCommand() },
+      { name: 'draft', factory: () => this.createIntegratedDraftCommand() },
+      { name: 'compose', factory: () => this.createIntegratedComposeCommand() },
       { name: 'help', factory: () => this.createIntegratedHelpCommand() },
       { name: 'version', factory: () => this.createIntegratedVersionCommand() }
     ]
@@ -1064,6 +1066,239 @@ export class IntegratedCommandService extends CommandService {
     } catch (error) {
       console.error('Error finding task:', error)
       return null
+    }
+  }
+
+  private createIntegratedDraftCommand(): CommandDefinition {
+    return {
+      name: 'draft',
+      aliases: ['document', 'doc'],
+      description: 'Open authoring workspace for current task or specific document',
+      category: 'document',
+      parameters: [
+        {
+          name: 'title',
+          type: 'string',
+          required: false,
+          description: 'Document title for new drafts'
+        },
+        {
+          name: 'task',
+          type: 'string',
+          required: false,
+          description: 'Task to associate document with'
+        },
+        {
+          name: 'id',
+          type: 'string',
+          required: false,
+          description: 'Document ID to open existing document'
+        }
+      ],
+      examples: [
+        '/draft',
+        '/draft "Project Report"',
+        '/draft --task="research" "Meeting Notes"',
+        '/draft --id="doc123"'
+      ],
+
+      execute: async (params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> => {
+        try {
+          const documentId = params.id as string
+          const title = params._positional[0] || params.title as string
+          const taskParam = params.task as string
+
+          // Get task - either from param, active task, or create default
+          let taskId: string | undefined
+          let taskName: string | undefined
+
+          if (taskParam) {
+            const task = await this.findTaskByName(taskParam)
+            if (task) {
+              taskId = task.id
+              taskName = task.name
+            } else {
+              return CommandExecutor.createErrorResponse(
+                `Task "${taskParam}" not found`,
+                'TASK_NOT_FOUND',
+                'Use /tasks to see available tasks or /newtask to create one'
+              )
+            }
+          } else {
+            const activeTask = await this.container.taskUseCases.getActiveTask()
+            if (activeTask) {
+              taskId = activeTask.id
+              taskName = activeTask.name
+            }
+          }
+
+          let document
+          let isNew = false
+
+          if (documentId) {
+            // Open existing document
+            const result = await this.container.documentsUseCases.getDocument(documentId)
+            if (!result) {
+              return CommandExecutor.createErrorResponse(
+                `Document "${documentId}" not found`,
+                'DOCUMENT_NOT_FOUND'
+              )
+            }
+            document = result.document
+          } else {
+            // Create new document or find existing draft for task
+            if (taskId) {
+              const existingDocs = await this.container.documentsUseCases.listDocumentsByTask(taskId)
+              const draftDoc = existingDocs.find(doc => doc.status === 'draft')
+
+              if (draftDoc && !title) {
+                // Use existing draft
+                document = draftDoc
+              }
+            }
+
+            if (!document) {
+              // Create new document
+              const documentTitle = title || `Draft - ${taskName || 'Untitled'}`
+              const result = await this.container.documentsUseCases.createDocument({
+                title: documentTitle,
+                taskId,
+                status: 'draft'
+              })
+              document = result.document
+              isNew = true
+            }
+          }
+
+          // Construct authoring workspace URL
+          const workspaceUrl = chrome.runtime.getURL('/authoring/index.html') +
+            `?documentId=${document.id}` +
+            (taskId ? `&taskId=${taskId}` : '')
+
+          // Open authoring workspace in new tab
+          await chrome.tabs.create({ url: workspaceUrl })
+
+          const message = isNew
+            ? `✅ Created new draft: ${document.title}`
+            : `✅ Opened draft: ${document.title}`
+
+          const taskInfo = taskName ? ` [Task: ${taskName}]` : ''
+
+          if (context.source === 'omnibox') {
+            return CommandExecutor.createNavigationResponse('home', `${message}${taskInfo}`)
+          }
+
+          return CommandExecutor.createSuccessResponse('text', `${message}${taskInfo}`, {
+            followUp: ['/compose --task', '/notes --task']
+          })
+
+        } catch (error) {
+          return CommandExecutor.createErrorResponse(
+            error instanceof Error ? error.message : 'Failed to open authoring workspace',
+            'DRAFT_ERROR'
+          )
+        }
+      }
+    }
+  }
+
+  private createIntegratedComposeCommand(): CommandDefinition {
+    return {
+      name: 'compose',
+      aliases: ['write', 'author'],
+      description: 'Create a new document and open authoring workspace',
+      category: 'document',
+      parameters: [
+        {
+          name: 'title',
+          type: 'string',
+          required: false,
+          description: 'Document title'
+        },
+        {
+          name: 'task',
+          type: 'string',
+          required: false,
+          description: 'Task to associate document with'
+        },
+        {
+          name: 'content',
+          type: 'string',
+          required: false,
+          description: 'Initial content for the document'
+        }
+      ],
+      examples: [
+        '/compose "Research Report"',
+        '/compose --task="project-alpha" "Meeting Minutes"',
+        '/compose --title="Notes" --content="Initial thoughts..."'
+      ],
+
+      execute: async (params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> => {
+        try {
+          const title = params._positional[0] || params.title as string
+          const taskParam = params.task as string
+          const initialContent = params.content as string
+
+          // Get task - either from param or active task
+          let taskId: string | undefined
+          let taskName: string | undefined
+
+          if (taskParam) {
+            const task = await this.findTaskByName(taskParam)
+            if (task) {
+              taskId = task.id
+              taskName = task.name
+            } else {
+              return CommandExecutor.createErrorResponse(
+                `Task "${taskParam}" not found`,
+                'TASK_NOT_FOUND',
+                'Use /tasks to see available tasks or /newtask to create one'
+              )
+            }
+          } else {
+            const activeTask = await this.container.taskUseCases.getActiveTask()
+            if (activeTask) {
+              taskId = activeTask.id
+              taskName = activeTask.name
+            }
+          }
+
+          // Create new document
+          const documentTitle = title || `New Document - ${taskName || new Date().toLocaleDateString()}`
+          const result = await this.container.documentsUseCases.createDocument({
+            title: documentTitle,
+            taskId,
+            status: 'draft',
+            initialContent
+          })
+
+          // Construct authoring workspace URL
+          const workspaceUrl = chrome.runtime.getURL('/authoring/index.html') +
+            `?documentId=${result.document.id}` +
+            (taskId ? `&taskId=${taskId}` : '')
+
+          // Open authoring workspace in new tab
+          await chrome.tabs.create({ url: workspaceUrl })
+
+          const message = `✅ Created document: ${result.document.title}`
+          const taskInfo = taskName ? ` [Task: ${taskName}]` : ''
+
+          if (context.source === 'omnibox') {
+            return CommandExecutor.createNavigationResponse('home', `${message}${taskInfo}`)
+          }
+
+          return CommandExecutor.createSuccessResponse('text', `${message}${taskInfo}`, {
+            followUp: ['/draft --task', '/notes --task']
+          })
+
+        } catch (error) {
+          return CommandExecutor.createErrorResponse(
+            error instanceof Error ? error.message : 'Failed to create document',
+            'COMPOSE_ERROR'
+          )
+        }
+      }
     }
   }
 
