@@ -206,6 +206,49 @@ const openDocument = async (document: DocumentEntry) => {
   }
 }
 
+const createNewDocument = async () => {
+  if (!currentTask.value) {
+    store.addNotification({
+      type: 'error',
+      message: 'No active task selected'
+    })
+    return
+  }
+
+  try {
+    const response = await store.sendMessage({
+      type: 'CREATE_DOCUMENT',
+      data: {
+        title: `New Document - ${currentTask.value.name}`,
+        taskId: currentTask.value.id,
+        status: 'draft',
+        initialContent: `# New Document\n\nStart writing your content here...`
+      }
+    }) as { type: string; data?: DocumentEntry }
+
+    if (response?.type === 'SUCCESS' && response.data) {
+      // Open the newly created document in authoring workspace
+      await openDocument(response.data)
+
+      // Refresh the documents list
+      await loadTaskDocuments(currentTask.value.id)
+
+      store.addNotification({
+        type: 'success',
+        message: 'New document created and opened'
+      })
+    } else {
+      throw new Error('Failed to create document')
+    }
+  } catch (error) {
+    console.error('Failed to create new document:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to create new document'
+    })
+  }
+}
+
 const removeFromTask = async (page: PageEntry) => {
   if (!currentTask.value) {
     store.addNotification({
@@ -469,8 +512,21 @@ onUnmounted(() => {
             {{ currentTask.description }}
           </div>
           <div class="task-meta">
-            <span class="page-count">{{ taskPages.length }} pages</span>
-            <span class="document-count">{{ taskDocuments.length }} documents</span>
+            <div class="task-counts">
+              <span class="page-count">{{ taskPages.length }} pages</span>
+              <span class="document-count">{{ taskDocuments.length }} documents</span>
+            </div>
+            <button
+              class="btn-new-document"
+              @click="createNewDocument"
+              title="Create new document for this task"
+            >
+              <svg viewBox="0 0 24 24" class="new-doc-icon">
+                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" fill="currentColor"/>
+                <path d="M11,15H13V12H16V10H13V7H11V10H8V12H11V15Z" fill="currentColor"/>
+              </svg>
+              New Document
+            </button>
           </div>
         </div>
       </header>
@@ -805,6 +861,14 @@ onUnmounted(() => {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.task-counts {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .page-count {
@@ -821,6 +885,34 @@ onUnmounted(() => {
   background: #f0f9ff;
   padding: 2px 6px;
   border-radius: 4px;
+}
+
+.btn-new-document {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  padding: 5px 10px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.btn-new-document:hover {
+  background: #059669;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
+.new-doc-icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
 }
 
 /* Pages List */
