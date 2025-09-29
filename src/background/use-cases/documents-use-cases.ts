@@ -7,7 +7,8 @@ import {
 import {
   IDocumentService,
   IDocumentVersionService,
-  ITaskService
+  ITaskService,
+  ITabManagementService
 } from '../../shared/services/interfaces'
 
 export class DocumentsUseCases {
@@ -15,6 +16,7 @@ export class DocumentsUseCases {
     private documentService: IDocumentService,
     private documentVersionService: IDocumentVersionService,
     private taskService: ITaskService,
+    private tabManagementService: ITabManagementService,
     private backgroundStore?: any
   ) {}
 
@@ -76,6 +78,10 @@ export class DocumentsUseCases {
 
   async deleteDocument(documentId: string): Promise<void> {
     await this.documentService.delete(documentId)
+
+    // Close any open authoring workspace tabs for this document
+    await this.tabManagementService.closeDocumentTabs(documentId)
+
     if (this.backgroundStore) {
       try {
         this.backgroundStore.broadcastStateUpdate?.(`document.${documentId}.deleted`, Date.now())

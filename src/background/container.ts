@@ -22,13 +22,15 @@ import {
   ITaskService,
   ISearchService,
   IDocumentService,
-  IDocumentVersionService
+  IDocumentVersionService,
+  ITabManagementService
 } from '../shared/services/interfaces'
 import { fuzzyMatchScore } from '../shared/utils'
 import { TaskEntry } from '../shared/models'
 import { FuzzySearchService } from './services/fuzzy-search-service'
 import { AnalyticsService } from './services/analytics-service'
 import { MLService } from './services/ml-service'
+import { TabManagementService } from './services/tab-management-service'
 import { IntegratedCommandService } from './commands/integrated-command-service'
 
 // Simple search service implementation
@@ -301,6 +303,7 @@ export class DIContainer {
   private _fuzzySearchService: FuzzySearchService
   private _analyticsService: AnalyticsService
   private _mlService: MLService
+  private _tabManagementService: ITabManagementService
   private _commandService!: IntegratedCommandService
   private _backgroundStore: any
 
@@ -314,6 +317,7 @@ export class DIContainer {
     this._fuzzySearchService = new FuzzySearchService()
     this._analyticsService = new AnalyticsService()
     this._mlService = new MLService()
+    this._tabManagementService = new TabManagementService()
 
     this._searchService = new SearchService(
       this._pageService,
@@ -353,7 +357,8 @@ export class DIContainer {
     this._documentsUseCases = new DocumentsUseCases(
       this._documentService,
       this._documentVersionService,
-      this._taskService
+      this._taskService,
+      this._tabManagementService
     )
 
     // Initialize command service last to avoid circular dependency issues
@@ -406,6 +411,7 @@ export class DIContainer {
       this._documentService,
       this._documentVersionService,
       this._taskService,
+      this._tabManagementService,
       backgroundStore
     )
   }
@@ -470,6 +476,10 @@ export class DIContainer {
 
   get commandService(): IntegratedCommandService {
     return this._commandService
+  }
+
+  get tabManagementService(): ITabManagementService {
+    return this._tabManagementService
   }
 
   get backgroundStore(): any {

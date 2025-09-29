@@ -101,3 +101,9 @@ export interface IStorageService {
     recentActivity: Array<{ type: string; timestamp: Date }>
   }>
 }
+
+export interface ITabManagementService {
+  closeDocumentTabs(documentId: string): Promise<void>
+  closeAuthoringWorkspaceTab(documentId: string): Promise<void>
+  getOpenAuthoringTabs(): Promise<chrome.tabs.Tab[]>
+}
