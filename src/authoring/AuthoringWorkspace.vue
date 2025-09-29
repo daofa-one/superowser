@@ -10,7 +10,10 @@
         <span class="task-badge" v-if="task">[{{ task.name }}]</span>
       </div>
       <div class="header-right">
-<button class="save-btn" @click="saveDocument" :disabled="saving || !documentLoaded || !document">
+        <button class="export-btn" @click="exportDocument" :disabled="!documentLoaded || !document" title="Export document">
+          Export
+        </button>
+        <button class="save-btn" @click="saveDocument" :disabled="saving || !documentLoaded || !document">
           {{ saving ? 'Saving...' : 'Save' }}
         </button>
         <button class="versions-btn" @click="showVersions = !showVersions" :disabled="!documentLoaded || !document">
@@ -388,6 +391,43 @@ async function saveDocument() {
   } finally {
     saving.value = false
   }
+}
+
+function exportDocument() {
+  if (!document.value) return
+
+  const content = editorContent.value
+  const title = documentTitle.value
+  const taskName = task.value?.name
+
+  // Create filename with task and document info
+  const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
+  const filename = `${taskName ? `[${taskName}] ` : ''}${title}_${timestamp}.md`
+
+  // Create markdown content with metadata header
+  const exportContent = `# ${title}
+
+${taskName ? `**Task:** ${taskName}\n` : ''}**Exported:** ${new Date().toLocaleString()}
+${document.value.activeVersionId ? `**Version:** ${document.value.activeVersionId}\n` : ''}
+---
+
+${content}`
+
+  // Create and download the file
+  const blob = new Blob([exportContent], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+
+  const link = window.document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.style.display = 'none'
+
+  window.document.body.appendChild(link)
+  link.click()
+  window.document.body.removeChild(link)
+
+  // Clean up the URL object
+  URL.revokeObjectURL(url)
 }
 
 let saveTimeout: number | null = null

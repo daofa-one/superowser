@@ -50,7 +50,7 @@
   gap: 8px;
 }
 
-.save-btn, .versions-btn {
+.export-btn, .save-btn, .versions-btn {
   padding: 6px 12px;
   border: 1px solid #d1d5da;
   background: white;
@@ -61,7 +61,7 @@
   transition: all 0.2s;
 }
 
-.save-btn:hover, .versions-btn:hover {
+.export-btn:hover, .save-btn:hover, .versions-btn:hover {
   background: #f6f8fa;
 }
 
@@ -80,11 +80,23 @@
   background: #218838;
 }
 
+.export-btn {
+  background: #6f42c1;
+  color: white;
+  border-color: #6f42c1;
+}
+
+.export-btn:hover:not(:disabled) {
+  background: #5a32a3;
+}
+
 /* Main workspace area */
 .workspace-main {
   flex: 1;
   display: flex;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* Sidebar */
@@ -218,6 +230,8 @@
   flex: 1;
   position: relative;
   background: white;
+  min-width: 300px;
+  overflow: hidden;
 }
 
 .monaco-editor-wrapper {
@@ -238,6 +252,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  flex-shrink: 0;
+  height: 100%;
 }
 
 .panel-header {
