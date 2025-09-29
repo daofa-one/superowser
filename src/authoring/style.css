@@ -95,6 +95,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  flex-shrink: 0;
+  height: 100%;
 }
 
 .sidebar-header {
@@ -127,6 +129,7 @@
 
 .sidebar-section {
   border-bottom: 1px solid #e1e4e8;
+  flex-shrink: 0;
 }
 
 .sidebar-section h4 {

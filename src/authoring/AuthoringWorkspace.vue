@@ -10,7 +10,7 @@
         <span class="task-badge" v-if="task">[{{ task.name }}]</span>
       </div>
       <div class="header-right">
-        <button class="save-btn" @click="saveDocument" :disabled="saving || !documentLoaded || !document">
+<button class="save-btn" @click="saveDocument" :disabled="saving || !documentLoaded || !document">
           {{ saving ? 'Saving...' : 'Save' }}
         </button>
         <button class="versions-btn" @click="showVersions = !showVersions" :disabled="!documentLoaded || !document">
@@ -25,7 +25,7 @@
       <aside class="workspace-sidebar" v-if="showSidebar">
         <div class="sidebar-header">
           <h3>References</h3>
-          <button @click="showSidebar = false" class="close-sidebar">×</button>
+          <button @click="closeSidebar" class="close-sidebar">×</button>
         </div>
 
         <!-- Task pages -->
@@ -107,14 +107,14 @@
     </div>
 
     <!-- Floating sidebar toggle -->
-    <button class="sidebar-toggle" @click="showSidebar = !showSidebar" v-if="!showSidebar">
+    <button class="sidebar-toggle" @click="openSidebar" v-if="!showSidebar">
       📚
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import { VueMonacoEditor } from '@guolao/vue-monaco-editor'
 import * as monaco from 'monaco-editor'
 import { DocumentEntry, DocumentVersionEntry, TaskEntry, PageEntry, NoteEntry } from '../shared/models'
@@ -135,6 +135,7 @@ const isDragOver = ref(false)
 const editorRef = ref()
 const editorContent = ref('')
 let editor: any = null
+let layoutRaf: number | null = null
 
 // Editor options
 const documentTitle = computed(() => document.value?.title?.trim() || 'Untitled Draft')
@@ -180,6 +181,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
   // Vue Monaco Editor handles cleanup automatically
+  if (layoutRaf) {
+    cancelAnimationFrame(layoutRaf)
+    layoutRaf = null
+  }
 })
 
 function handleEditorMount(editorInstance: any) {
@@ -229,12 +234,35 @@ function handleEditorMount(editorInstance: any) {
     editorDomNode.addEventListener('drop', handleDrop)
     editorDomNode.addEventListener('dragleave', handleDragLeave)
   }
+
+  scheduleEditorLayout()
 }
 
 function handleContentChange() {
   // Auto-save after changes (debounced)
   debouncedSave()
 }
+
+function scheduleEditorLayout() {
+  if (!editor) return
+  if (layoutRaf) {
+    cancelAnimationFrame(layoutRaf)
+  }
+  layoutRaf = requestAnimationFrame(() => {
+    layoutRaf = null
+    if (editor) {
+      editor.layout()
+    }
+  })
+}
+
+watch(showSidebar, (newValue) => {
+  if (newValue) {
+    nextTick(() => {
+      scheduleEditorLayout()
+    })
+  }
+})
 
 function isSuccessResponse(response: any): response is { type: 'SUCCESS'; data: any } {
   return response && response.type === 'SUCCESS'
@@ -307,6 +335,31 @@ async function loadTaskData(taskId?: string | null) {
   } catch (error) {
     console.error('Failed to load task data:', error)
   }
+}
+
+function closeSidebar() {
+  showSidebar.value = false
+}
+
+async function openSidebar() {
+  if (showSidebar.value) {
+    return
+  }
+
+  showSidebar.value = true
+  await nextTick()
+
+  // Always reload task data when reopening sidebar to ensure fresh data
+  const targetTaskId = document.value?.taskId ?? initialTaskId
+  if (targetTaskId) {
+    try {
+      await loadTaskData(targetTaskId)
+    } catch (error) {
+      console.error('Failed to load task data when reopening sidebar:', error)
+    }
+  }
+
+  scheduleEditorLayout()
 }
 
 async function saveDocument() {
