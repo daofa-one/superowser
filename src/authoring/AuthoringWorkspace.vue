@@ -6,17 +6,17 @@
         <template v-if="documentLoaded">
           <h1 class="document-title">{{ documentTitle }}</h1>
         </template>
-        <span class="loading-text" v-else>Loading...</span>
-        <span class="task-badge" v-if="task">[{{ task.name }}]</span>
+        <span v-else class="loading-text">Loading...</span>
+        <span v-if="task" class="task-badge">[{{ task.name }}]</span>
       </div>
       <div class="header-right">
-        <button class="export-btn" @click="exportDocument" :disabled="!documentLoaded || !document" title="Export document">
+        <button class="export-btn" :disabled="!documentLoaded || !document" title="Export document" @click="exportDocument">
           Export
         </button>
-        <button class="save-btn" @click="saveDocument" :disabled="saving || !documentLoaded || !document">
+        <button class="save-btn" :disabled="saving || !documentLoaded || !document" @click="saveDocument">
           {{ saving ? 'Saving...' : 'Save' }}
         </button>
-        <button class="versions-btn" @click="showVersions = !showVersions" :disabled="!documentLoaded || !document">
+        <button class="versions-btn" :disabled="!documentLoaded || !document" @click="showVersions = !showVersions">
           Versions
         </button>
       </div>
@@ -25,14 +25,14 @@
     <!-- Main content area -->
     <div class="workspace-main">
       <!-- Sidebar -->
-      <aside class="workspace-sidebar" v-if="showSidebar">
+      <aside v-if="showSidebar" class="workspace-sidebar">
         <div class="sidebar-header">
           <h3>References</h3>
-          <button @click="closeSidebar" class="close-sidebar">×</button>
+          <button class="close-sidebar" @click="closeSidebar">×</button>
         </div>
 
         <!-- Task pages -->
-        <section class="sidebar-section" v-if="task">
+        <section v-if="task" class="sidebar-section">
           <h4>Task Pages</h4>
           <div class="reference-list">
             <div
@@ -42,7 +42,7 @@
               draggable="true"
               @dragstart="startDrag(page, 'page', $event)"
             >
-              <img :src="page.favicon" v-if="page.favicon" class="favicon" />
+              <img v-if="page.favicon" :src="page.favicon" class="favicon" />
               <div class="reference-content">
                 <div class="reference-title">{{ page.title }}</div>
                 <div class="reference-url">{{ page.url }}</div>
@@ -52,7 +52,7 @@
         </section>
 
         <!-- Task notes -->
-        <section class="sidebar-section" v-if="task">
+        <section v-if="task" class="sidebar-section">
           <h4>Task Notes</h4>
           <div class="reference-list">
             <div
@@ -79,17 +79,17 @@
           :options="editorOptions"
           :language="'markdown'"
           :theme="'vs'"
+          class="monaco-editor-wrapper"
           @mount="handleEditorMount"
           @change="handleContentChange"
-          class="monaco-editor-wrapper"
         />
       </main>
 
       <!-- Version panel -->
-      <aside class="version-panel" v-if="showVersions">
+      <aside v-if="showVersions" class="version-panel">
         <div class="panel-header">
           <h3>Version History</h3>
-          <button @click="showVersions = false" class="close-panel">×</button>
+          <button class="close-panel" @click="showVersions = false">×</button>
         </div>
         <div class="version-list">
           <div
@@ -103,14 +103,14 @@
               <span class="version-date">{{ formatDate(version.createdAt) }}</span>
               <span class="version-author">{{ version.createdBy }}</span>
             </div>
-            <div class="version-summary" v-if="version.summary">{{ version.summary }}</div>
+            <div v-if="version.summary" class="version-summary">{{ version.summary }}</div>
           </div>
         </div>
       </aside>
     </div>
 
     <!-- Floating sidebar toggle -->
-    <button class="sidebar-toggle" @click="openSidebar" v-if="!showSidebar">
+    <button v-if="!showSidebar" class="sidebar-toggle" @click="openSidebar">
       📚
     </button>
   </div>

@@ -1131,6 +1131,18 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 data = { success: true };
                 break;
 
+            case 'OPEN_AUTHORING_WORKSPACE':
+                {
+                    const { documentId, taskId } = message.data;
+                    const workspaceUrl = chrome.runtime.getURL('/authoring/index.html') +
+                        `?documentId=${documentId}` +
+                        (taskId ? `&taskId=${taskId}` : '');
+
+                    await chrome.tabs.create({ url: workspaceUrl });
+                    data = { success: true };
+                }
+                break;
+
             default:
                 throw new Error(`Unknown message type: ${(message as any).type}`);
         }

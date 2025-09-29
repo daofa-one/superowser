@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useSidePanelStore } from '../stores/sidepanel-store'
-import type { PageEntry, TaskEntry } from '../../shared/models'
+import type { PageEntry, TaskEntry, DocumentEntry } from '../../shared/models'
 
 const store = useSidePanelStore()
 
@@ -26,6 +26,7 @@ interface RuntimeMessage {
 // Component state
 const currentTask = ref<TaskEntry | null>(null)
 const taskPages = ref<PageEntry[]>([])
+const taskDocuments = ref<DocumentEntry[]>([])
 const isLoading = ref(true)
 const showTaskSelector = ref(false)
 const availableTasks = ref<TaskWithStats[]>([])
@@ -82,11 +83,13 @@ const applyCurrentTask = async (task: TaskEntry | null) => {
 
   if (task) {
     await loadTaskPages(task.name)
+    await loadTaskDocuments(task.id)
     if (showTaskSelector.value) {
       selectedTaskName.value = task.name
     }
   } else {
     taskPages.value = []
+    taskDocuments.value = []
     if (showTaskSelector.value) {
       selectedTaskName.value = null
     }
@@ -144,6 +147,24 @@ const loadTaskPages = async (taskName: string) => {
   }
 }
 
+const loadTaskDocuments = async (taskId: string) => {
+  try {
+    const response = await store.sendMessage({
+      type: 'GET_TASK_DOCUMENTS',
+      data: { taskId }
+    }) as { type: string; data?: DocumentEntry[] }
+
+    if (response?.type === 'SUCCESS' && response.data) {
+      taskDocuments.value = response.data || []
+    } else {
+      taskDocuments.value = []
+    }
+  } catch (error) {
+    console.error('Failed to load task documents:', error)
+    taskDocuments.value = []
+  }
+}
+
 const openPage = async (url: string) => {
   try {
     const response = await store.sendMessage({
@@ -159,6 +180,28 @@ const openPage = async (url: string) => {
     store.addNotification({
       type: 'error',
       message: 'Failed to focus page tab'
+    })
+  }
+}
+
+const openDocument = async (document: DocumentEntry) => {
+  try {
+    const response = await store.sendMessage({
+      type: 'OPEN_AUTHORING_WORKSPACE',
+      data: {
+        documentId: document.id,
+        taskId: document.taskId
+      }
+    })
+
+    if (response?.type === 'ERROR') {
+      throw new Error(response.error?.message || 'Failed to open document')
+    }
+  } catch (error) {
+    console.error('Failed to open document:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to open authoring workspace'
     })
   }
 }
@@ -183,6 +226,7 @@ const removeFromTask = async (page: PageEntry) => {
 
     // Refresh the page list
     await loadTaskPages(currentTask.value.name)
+    await loadTaskDocuments(currentTask.value.id)
 
     store.addNotification({
       type: 'success',
@@ -211,6 +255,7 @@ const deletePageCompletely = async (page: PageEntry) => {
     // Refresh the page list if we still have an active task
     if (currentTask.value) {
       await loadTaskPages(currentTask.value.name)
+      await loadTaskDocuments(currentTask.value.id)
     }
 
     store.addNotification({
@@ -367,8 +412,11 @@ const onTaskChange = (message: RuntimeMessage) => {
         } else if (message.path?.startsWith('task.')) {
           const currentTaskName = currentTask.value?.name
           if (currentTaskName && message.path.includes(currentTaskName) && message.path.includes('contentChanged')) {
-            console.log('Current task content changed, reloading pages...')
+            console.log('Current task content changed, reloading pages and documents...')
             await loadTaskPages(currentTaskName)
+            if (currentTask.value?.id) {
+              await loadTaskDocuments(currentTask.value.id)
+            }
           }
         }
       }
@@ -422,6 +470,7 @@ onUnmounted(() => {
           </div>
           <div class="task-meta">
             <span class="page-count">{{ taskPages.length }} pages</span>
+            <span class="document-count">{{ taskDocuments.length }} documents</span>
           </div>
         </div>
       </header>
@@ -486,6 +535,38 @@ onUnmounted(() => {
           <div class="empty-hint">Save pages to this task to see them here</div>
         </div>
       </main>
+
+      <!-- Documents Section -->
+      <section v-if="taskDocuments.length > 0" class="documents-section">
+        <h4 class="section-title">📝 Documents</h4>
+        <div class="documents-list">
+          <ul class="document-list">
+            <li
+              v-for="document in taskDocuments"
+              :key="document.id"
+              class="document-row"
+            >
+              <div class="document-icon">
+                <div class="document-type-icon">📄</div>
+              </div>
+
+              <div class="document-main" @click="openDocument(document)">
+                <div class="document-title" :title="document.title">
+                  {{ document.title }}
+                </div>
+                <div class="document-meta">
+                  <span class="document-status" :class="`status-${document.status}`">
+                    {{ document.status }}
+                  </span>
+                  <span class="document-date">
+                    {{ new Date(document.updatedAt).toLocaleDateString() }}
+                  </span>
+                </div>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </section>
     </div>
 
     <!-- No Active Task State -->
@@ -730,6 +811,14 @@ onUnmounted(() => {
   font-size: 11px;
   color: #64748b;
   background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.document-count {
+  font-size: 11px;
+  color: #64748b;
+  background: #f0f9ff;
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -1237,5 +1326,126 @@ onUnmounted(() => {
 .btn-delete:hover {
   background: #f5c6cb;
   color: #5a1a1d;
+}
+
+/* Documents Section */
+.documents-section {
+  margin: 12px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 12px;
+}
+
+.section-title {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.documents-list {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.document-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.document-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background: white;
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+
+.document-row:hover {
+  background-color: #f8fafc;
+}
+
+.document-row:last-child {
+  border-bottom: none;
+}
+
+.document-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.document-type-icon {
+  font-size: 16px;
+}
+
+.document-main {
+  min-width: 0;
+}
+
+.document-main:hover .document-title {
+  color: #0056b3;
+}
+
+.document-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+  line-height: 1.3;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.document-status {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.status-draft {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-review {
+  background: #d1ecf1;
+  color: #0c5460;
+}
+
+.status-final {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-archived {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.document-date {
+  font-size: 11px;
+  color: #64748b;
 }
 </style>
