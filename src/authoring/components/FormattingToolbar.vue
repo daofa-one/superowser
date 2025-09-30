@@ -148,6 +148,7 @@ defineEmits<Emits>()
   align-items: center;
   justify-content: center;
   padding: 6px 10px;
+  height: 32px;
   background: white;
   border: 1px solid #d1d5db;
   border-radius: 4px;
@@ -158,6 +159,7 @@ defineEmits<Emits>()
   transition: all 0.2s;
   white-space: nowrap;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .toolbar-btn:hover {
