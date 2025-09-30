@@ -24,6 +24,15 @@
           <button class="close-sidebar" @click="closeSidebar">×</button>
         </div>
 
+        <!-- Document outline -->
+        <section class="sidebar-section">
+          <DocumentOutline
+            :headings="outlineHeadings"
+            :activeHeading="activeHeading"
+            @headingClick="handleHeadingClick"
+          />
+        </section>
+
         <!-- Task pages -->
         <section v-if="task" class="sidebar-section">
           <h4>Task Pages</h4>
@@ -139,12 +148,14 @@ declare global {
 import WorkspaceHeader from './components/WorkspaceHeader.vue'
 import FormattingToolbar from './components/FormattingToolbar.vue'
 import MarkdownPreview from './components/MarkdownPreview.vue'
+import DocumentOutline from './components/DocumentOutline.vue'
 
 // Composables
 import { useDocumentState } from './composables/useDocumentState'
 import { usePreview } from './composables/usePreview'
 import { useFormatting } from './composables/useFormatting'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { useDocumentOutline } from './composables/useDocumentOutline'
 
 // Use composables
 const {
@@ -173,6 +184,14 @@ const {
   debouncedPreviewUpdate,
   handlePreviewScroll
 } = usePreview()
+
+const {
+  headings: outlineHeadings,
+  activeHeading,
+  updateHeadingsFromContent,
+  scrollToHeading,
+  initializeOutline
+} = useDocumentOutline()
 
 // Local state
 const taskPages = ref<PageEntry[]>([])
@@ -221,6 +240,11 @@ onMounted(async () => {
   await loadTaskData(document.value?.taskId)
   await loadTaskPages()
   await loadTaskNotes()
+
+  // Initialize outline from loaded content
+  nextTick(() => {
+    updateHeadingsFromContent(documentContent.value)
+  })
 })
 
 onUnmounted(() => {
@@ -272,6 +296,8 @@ function handleContentChange() {
   debouncedSave()
   // Update preview (debounced)
   debouncedPreviewUpdate(documentContent.value)
+  // Update outline from content
+  updateHeadingsFromContent(documentContent.value)
 }
 
 function scheduleEditorLayout() {
@@ -310,6 +336,12 @@ async function handleSaveDocument() {
 
 async function handleUpdateTitle(newTitle: string) {
   await updateDocument({ title: newTitle })
+}
+
+function handleHeadingClick(headingId: string) {
+  if (showPreview.value && previewContentRef.value) {
+    scrollToHeading(headingId)
+  }
 }
 
 // Sidebar functions
@@ -544,10 +576,20 @@ watch(showPreview, () => {
   })
 })
 
-// Watch for editor content changes to update preview
+// Watch for editor content changes to update preview and outline
 watch(documentContent, () => {
   if (showPreview.value) {
     debouncedPreviewUpdate(documentContent.value)
+  }
+  updateHeadingsFromContent(documentContent.value)
+})
+
+// Initialize outline when preview is available
+watch(previewContentRef, (newRef) => {
+  if (newRef) {
+    nextTick(() => {
+      initializeOutline(newRef)
+    })
   }
 })
 </script>
