@@ -932,7 +932,9 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
 
             // Document-related handlers
             case 'GET_DOCUMENT':
-                data = await container.documentsUseCases.getDocument(message.data.documentId);
+                data = await container.documentsUseCases.getDocument(message.data.documentId, {
+                    versionLimit: message.data?.versionLimit
+                });
                 break;
             case 'CREATE_DOCUMENT':
                 data = await container.documentsUseCases.createDocument(message.data);

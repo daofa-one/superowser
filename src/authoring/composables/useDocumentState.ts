@@ -36,7 +36,7 @@ export function useDocumentState() {
     }
 
     // Fallback to the most recent version
-    const latestVersion = versions.value.sort((a, b) =>
+    const latestVersion = [...versions.value].sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     )[0]
 
@@ -45,26 +45,44 @@ export function useDocumentState() {
 
   // Load document and versions
   async function loadDocument() {
-    if (!documentId) return
+    if (!documentId) {
+      console.log('[useDocumentState] No documentId provided for loading')
+      return
+    }
+
+    console.log('[useDocumentState] Loading document:', documentId)
 
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'GET_DOCUMENT',
-        data: { documentId }
+        data: { documentId, versionLimit: 200 }
       })
+
+      console.log('[useDocumentState] Load response:', response)
 
       if (isSuccessResponse(response) && response.data?.document) {
         document.value = response.data.document
-        versions.value = response.data.versions || []
+        const rawVersions = response.data.versions || []
+        console.log('[useDocumentState] Raw versions from DB:', rawVersions.length, rawVersions.map(v => ({id: v.id, createdAt: v.createdAt})))
+
+        const sortedVersions = rawVersions.slice().sort((a: DocumentVersionEntry, b: DocumentVersionEntry) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )
+        versions.value = sortedVersions
+        console.log('[useDocumentState] Sorted versions:', sortedVersions.length, sortedVersions.map(v => ({id: v.id, createdAt: v.createdAt})))
 
         // Set the document content from the active version
-        documentContent.value = getActiveVersionContent()
+        const activeContent = getActiveVersionContent()
+        documentContent.value = activeContent
+        console.log('[useDocumentState] Active version content length:', activeContent.length, 'active version ID:', document.value.activeVersionId)
 
         return {
           document: response.data.document,
           versions: response.data.versions || [],
           content: documentContent.value
         }
+      } else {
+        console.error('[useDocumentState] Failed to load document - invalid response:', response)
       }
     } catch (error) {
       console.error('Failed to load document:', error)
@@ -100,8 +118,12 @@ export function useDocumentState() {
 
   // Save document version
   async function saveDocument(content: string) {
-    if (!document.value || saving.value) return false
+    if (!document.value || saving.value) {
+      console.log('[useDocumentState] Save skipped - no document or already saving')
+      return false
+    }
 
+    console.log('[useDocumentState] Starting save for document:', document.value.id, 'content length:', content.length)
     saving.value = true
     try {
       const response = await chrome.runtime.sendMessage({
@@ -113,11 +135,41 @@ export function useDocumentState() {
         }
       })
 
+      console.log('[useDocumentState] Raw response from background:', response)
+
       if (isSuccessResponse(response)) {
-        // Refresh document data
-        await loadDocument()
-        await loadTaskData(document.value?.taskId ?? initialTaskId)
+        console.log('[useDocumentState] Save successful, processing response...')
+        const savedVersion = response.data as DocumentVersionEntry
+        const savedVersionId = savedVersion.id
+        const savedCreatedAt = savedVersion.createdAt instanceof Date
+          ? savedVersion.createdAt
+          : new Date(savedVersion.createdAt)
+
+        console.log('[useDocumentState] Saved version:', savedVersionId, 'at:', savedCreatedAt)
+
+        // Update editor content immediately with the saved text
+        documentContent.value = content
+
+        // Update local document metadata
+        if (document.value) {
+          document.value.activeVersionId = savedVersionId
+          document.value.updatedAt = savedCreatedAt
+        }
+
+        // Merge the saved version into the local list, sorted most-recent first
+        const filtered = versions.value.filter(version => version.id !== savedVersionId)
+        versions.value = [
+          {
+            ...savedVersion,
+            createdAt: savedCreatedAt
+          },
+          ...filtered
+        ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+        console.log('[useDocumentState] Local state updated, versions count:', versions.value.length)
         return true
+      } else {
+        console.error('[useDocumentState] Save failed - non-success response:', response)
       }
     } catch (error) {
       console.error('Failed to save document:', error)

@@ -58,13 +58,23 @@ export class DocumentsUseCases {
     return version
   }
 
-  async getDocument(documentId: string): Promise<{ document: DocumentEntry; versions: DocumentVersionEntry[] } | null> {
+  async getDocument(
+    documentId: string,
+    options: { versionLimit?: number } = {}
+  ): Promise<{ document: DocumentEntry; versions: DocumentVersionEntry[] } | null> {
+    console.log('[DocumentsUseCases] Getting document:', documentId, 'limit:', options.versionLimit)
+
     const document = await this.documentService.getById(documentId)
     if (!document) {
+      console.log('[DocumentsUseCases] Document not found:', documentId)
       return null
     }
 
-    const versions = await this.documentVersionService.getByDocument(documentId)
+    console.log('[DocumentsUseCases] Document found:', document.id, 'activeVersionId:', document.activeVersionId)
+
+    const versions = await this.documentVersionService.getByDocument(documentId, options.versionLimit)
+    console.log('[DocumentsUseCases] Versions found:', versions.length, versions.map(v => ({ id: v.id, createdAt: v.createdAt })))
+
     return { document, versions }
   }
 

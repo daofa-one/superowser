@@ -1,4 +1,3 @@
-import { ref } from 'vue'
 import * as monaco from 'monaco-editor'
 
 export function useFormatting(editor: any) {
@@ -11,77 +10,173 @@ export function useFormatting(editor: any) {
     if (!model || !selection) return
 
     const selectedText = model.getValueInRange(selection)
-    let formattedText = ''
-    let cursorOffset = 0
+    const hasSelection = selectedText.length > 0
+    const startOffset = model.getOffsetAt(selection.getStartPosition())
+
+    let insertText = ''
+    let selectionStartDelta = 0
+    let selectionEndDelta = 0
+
+    const applyWrapper = (prefix: string, suffix: string, placeholder = '') => {
+      const inner = hasSelection ? selectedText : placeholder
+      insertText = `${prefix}${inner}${suffix}`
+      if (hasSelection || placeholder) {
+        selectionStartDelta = prefix.length
+        selectionEndDelta = prefix.length + inner.length
+      } else {
+        selectionStartDelta = prefix.length
+        selectionEndDelta = prefix.length
+      }
+    }
 
     switch (format) {
       case 'bold':
-        formattedText = `**${selectedText}**`
-        cursorOffset = selectedText ? 0 : 2
+        applyWrapper('**', '**')
         break
       case 'italic':
-        formattedText = `*${selectedText}*`
-        cursorOffset = selectedText ? 0 : 1
+        applyWrapper('*', '*')
         break
       case 'strikethrough':
-        formattedText = `~~${selectedText}~~`
-        cursorOffset = selectedText ? 0 : 2
+        applyWrapper('~~', '~~')
         break
-      case 'h1':
-        formattedText = `# ${selectedText}`
-        cursorOffset = selectedText ? 0 : 2
-        break
-      case 'h2':
-        formattedText = `## ${selectedText}`
-        cursorOffset = selectedText ? 0 : 3
-        break
-      case 'h3':
-        formattedText = `### ${selectedText}`
-        cursorOffset = selectedText ? 0 : 4
-        break
-      case 'ul':
-        formattedText = `- ${selectedText}`
-        cursorOffset = selectedText ? 0 : 2
-        break
-      case 'ol':
-        formattedText = `1. ${selectedText}`
-        cursorOffset = selectedText ? 0 : 3
-        break
-      case 'checkbox':
-        formattedText = `- [ ] ${selectedText}`
-        cursorOffset = selectedText ? 0 : 6
-        break
-      case 'link':
-        if (selectedText) {
-          formattedText = `[${selectedText}](url)`
-          cursorOffset = -4
+      case 'h1': {
+        const prefix = '# '
+        insertText = `${prefix}${selectedText}`
+        if (hasSelection) {
+          selectionStartDelta = prefix.length
+          selectionEndDelta = prefix.length + selectedText.length
         } else {
-          formattedText = '[text](url)'
-          cursorOffset = -9
+          insertText = prefix
+          selectionStartDelta = insertText.length
+          selectionEndDelta = insertText.length
         }
         break
-      case 'code':
-        if (selectedText.includes('\n')) {
-          formattedText = `\`\`\`\n${selectedText}\n\`\`\``
-          cursorOffset = selectedText ? 0 : 4
+      }
+      case 'h2': {
+        const prefix = '## '
+        insertText = `${prefix}${selectedText}`
+        if (hasSelection) {
+          selectionStartDelta = prefix.length
+          selectionEndDelta = prefix.length + selectedText.length
         } else {
-          formattedText = `\`${selectedText}\``
-          cursorOffset = selectedText ? 0 : 1
+          insertText = prefix
+          selectionStartDelta = insertText.length
+          selectionEndDelta = insertText.length
         }
         break
-      case 'quote':
-        formattedText = `> ${selectedText}`
-        cursorOffset = selectedText ? 0 : 2
-        break
-      case 'mermaid':
-        if (selectedText) {
-          formattedText = `\`\`\`mermaid\n${selectedText}\n\`\`\``
-          cursorOffset = 0
+      }
+      case 'h3': {
+        const prefix = '### '
+        insertText = `${prefix}${selectedText}`
+        if (hasSelection) {
+          selectionStartDelta = prefix.length
+          selectionEndDelta = prefix.length + selectedText.length
         } else {
-          formattedText = `\`\`\`mermaid\nflowchart TD\n    A[Start] --> B[End]\n\`\`\``
-          cursorOffset = -26 // Position cursor after "flowchart TD\n    "
+          insertText = prefix
+          selectionStartDelta = insertText.length
+          selectionEndDelta = insertText.length
         }
         break
+      }
+      case 'ul': {
+        if (hasSelection) {
+          const formatted = selectedText
+            .split('\n')
+            .map(line => (line.startsWith('- ') ? line : `- ${line}`))
+            .join('\n')
+          insertText = formatted
+          selectionStartDelta = 0
+          selectionEndDelta = insertText.length
+        } else {
+          insertText = '- '
+          selectionStartDelta = insertText.length
+          selectionEndDelta = insertText.length
+        }
+        break
+      }
+      case 'ol': {
+        if (hasSelection) {
+          const formatted = selectedText
+            .split('\n')
+            .map((line, index) => `${index + 1}. ${line}`)
+            .join('\n')
+          insertText = formatted
+          selectionStartDelta = 0
+          selectionEndDelta = insertText.length
+        } else {
+          insertText = '1. '
+          selectionStartDelta = insertText.length
+          selectionEndDelta = insertText.length
+        }
+        break
+      }
+      case 'checkbox': {
+        if (hasSelection) {
+          const formatted = selectedText
+            .split('\n')
+            .map(line => (line.startsWith('- [') ? line : `- [ ] ${line}`))
+            .join('\n')
+          insertText = formatted
+          selectionStartDelta = 0
+          selectionEndDelta = insertText.length
+        } else {
+          insertText = '- [ ] '
+          selectionStartDelta = insertText.length
+          selectionEndDelta = insertText.length
+        }
+        break
+      }
+      case 'link': {
+        const textPlaceholder = hasSelection ? selectedText : 'link text'
+        const urlPlaceholder = 'https://'
+        insertText = `[${textPlaceholder}](${urlPlaceholder})`
+        if (hasSelection) {
+          selectionStartDelta = textPlaceholder.length + 3
+          selectionEndDelta = selectionStartDelta + urlPlaceholder.length
+        } else {
+          selectionStartDelta = 1
+          selectionEndDelta = 1 + textPlaceholder.length
+        }
+        break
+      }
+      case 'code': {
+        const containsNewline = hasSelection && selectedText.includes('\n')
+        if (hasSelection && !containsNewline) {
+          applyWrapper('`', '`')
+        } else {
+          const innerContent = hasSelection ? selectedText : ''
+          const tripleBacktick = '```'
+          insertText = `${tripleBacktick}\n${innerContent}\n${tripleBacktick}`
+          selectionStartDelta = tripleBacktick.length + 1
+          selectionEndDelta = selectionStartDelta + innerContent.length
+        }
+        break
+      }
+      case 'quote': {
+        if (hasSelection) {
+          insertText = selectedText
+            .split('\n')
+            .map(line => (line.startsWith('>') ? line : `> ${line}`))
+            .join('\n')
+          selectionStartDelta = 0
+          selectionEndDelta = insertText.length
+        } else {
+          const prefix = '> '
+          insertText = prefix
+          selectionStartDelta = insertText.length
+          selectionEndDelta = insertText.length
+        }
+        break
+      }
+      case 'mermaid': {
+        const diagramTemplate = selectedText || `flowchart TD\n    A[Start] --> B[End]`
+        const header = '```mermaid\n'
+        const footer = '\n```'
+        insertText = `${header}${diagramTemplate}${footer}`
+        selectionStartDelta = header.length
+        selectionEndDelta = header.length + diagramTemplate.length
+        break
+      }
       default:
         return
     }
@@ -89,19 +184,19 @@ export function useFormatting(editor: any) {
     // Replace the selected text
     model.pushEditOperations([], [{
       range: selection,
-      text: formattedText
+      text: insertText
     }], () => null)
 
-    // Update cursor position
-    if (cursorOffset !== 0) {
-      const newPosition = {
-        lineNumber: selection.endLineNumber,
-        column: selection.endColumn + formattedText.length + cursorOffset
-      }
-      editor.setPosition(newPosition)
-    }
+    const newSelectionStart = model.getPositionAt(startOffset + selectionStartDelta)
+    const newSelectionEnd = model.getPositionAt(startOffset + selectionEndDelta)
 
-    // Focus back to editor
+    editor.setSelection(new monaco.Selection(
+      newSelectionStart.lineNumber,
+      newSelectionStart.column,
+      newSelectionEnd.lineNumber,
+      newSelectionEnd.column
+    ))
+
     editor.focus()
   }
 

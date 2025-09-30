@@ -446,6 +446,8 @@ export class DexieDocumentService implements IDocumentService {
 
 export class DexieDocumentVersionService implements IDocumentVersionService {
   async create(request: SaveDocumentVersionRequest): Promise<DocumentVersionEntry> {
+    console.log('[DexieDocumentVersionService] Creating version for document:', request.documentId, 'content length:', request.content?.length || 0)
+
     const nowDate = now()
     const version: DocumentVersionEntry = {
       id: generateId(),
@@ -459,14 +461,23 @@ export class DexieDocumentVersionService implements IDocumentVersionService {
       sources: request.sources
     }
 
-    await db.documentVersions.add(version)
+    console.log('[DexieDocumentVersionService] Generated version:', version.id)
 
-    await db.documents.update(request.documentId, {
-      activeVersionId: version.id,
-      updatedAt: now()
-    })
+    try {
+      await db.documentVersions.add(version)
+      console.log('[DexieDocumentVersionService] Version added to database')
 
-    return version
+      await db.documents.update(request.documentId, {
+        activeVersionId: version.id,
+        updatedAt: now()
+      })
+      console.log('[DexieDocumentVersionService] Document updated with new active version')
+
+      return version
+    } catch (error) {
+      console.error('[DexieDocumentVersionService] Failed to create version:', error)
+      throw error
+    }
   }
 
   async getById(id: string): Promise<DocumentVersionEntry | null> {
@@ -481,20 +492,28 @@ export class DexieDocumentVersionService implements IDocumentVersionService {
     }
   }
 
-  async getByDocument(documentId: string, limit = 50): Promise<DocumentVersionEntry[]> {
-    const versions = await db.documentVersions
+  async getByDocument(documentId: string, limit?: number): Promise<DocumentVersionEntry[]> {
+    console.log('[DexieDocumentVersionService] Getting versions for document:', documentId, 'limit:', limit)
+
+    const rawVersions = await db.documentVersions
       .where('documentId')
       .equals(documentId)
-      .reverse()
-      .sortBy('createdAt')
+      .toArray()
 
-    return versions
-      .reverse()
-      .slice(0, limit)
+    console.log('[DexieDocumentVersionService] Raw versions fetched:', rawVersions.length, rawVersions.map(v => ({ id: v.id, createdAt: v.createdAt })))
+
+    const processed = rawVersions
       .map(version => ({
         ...version,
         createdAt: version.createdAt instanceof Date ? version.createdAt : new Date(version.createdAt)
       }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+    const limited = typeof limit === 'number' ? processed.slice(0, limit) : processed
+
+    console.log('[DexieDocumentVersionService] Processed versions:', limited.length, limited.map(v => ({ id: v.id, createdAt: v.createdAt })))
+
+    return limited
   }
 
   async delete(id: string): Promise<void> {

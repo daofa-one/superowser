@@ -205,7 +205,10 @@ const {
   togglePreview,
   updatePreview,
   debouncedPreviewUpdate,
-  handlePreviewScroll
+  handlePreviewScroll,
+  setPreviewScrollRatio,
+  registerPreviewScrollHandler,
+  isScrollSyncing
 } = usePreview()
 
 const {
@@ -227,6 +230,11 @@ const isDragOver = ref(false)
 const editorRef = ref()
 let editor: any = null
 let layoutRaf: number | null = null
+let editorScrollDisposable: monaco.IDisposable | null = null
+let editorSyncTimeout: number | null = null
+let isEditorSyncing = false
+let lastPreviewScrollRatio = 0
+let lastEditorScrollRatio = 0
 
 // Initialize formatting, keyboard shortcuts, and commands once editor is mounted
 let formatText: (format: string) => void
@@ -275,6 +283,14 @@ onUnmounted(() => {
   if (layoutRaf) {
     cancelAnimationFrame(layoutRaf)
     layoutRaf = null
+  }
+  if (editorScrollDisposable) {
+    editorScrollDisposable.dispose()
+    editorScrollDisposable = null
+  }
+  if (editorSyncTimeout) {
+    window.clearTimeout(editorSyncTimeout)
+    editorSyncTimeout = null
   }
 })
 
@@ -326,6 +342,40 @@ function handleEditorMount(editorInstance: any) {
   // Register custom commands for command palette
   registerCustomCommands()
 
+  if (editorScrollDisposable) {
+    editorScrollDisposable.dispose()
+    editorScrollDisposable = null
+  }
+
+  editorScrollDisposable = editor.onDidScrollChange((event: monaco.IScrollEvent) => {
+    if (!showPreview.value || isEditorSyncing || isScrollSyncing.value) {
+      return
+    }
+
+    const layoutInfo = editor.getLayoutInfo()
+    const editorHeight = layoutInfo?.height ?? 0
+    const maxScroll = Math.max(editor.getScrollHeight() - editorHeight, 1)
+    const ratio = maxScroll === 0 ? 0 : Math.min(Math.max(event.scrollTop / maxScroll, 0), 1)
+
+    if (Math.abs(ratio - lastPreviewScrollRatio) < 0.01) {
+      lastEditorScrollRatio = ratio
+      return
+    }
+
+    isEditorSyncing = true
+    setPreviewScrollRatio(ratio)
+    lastEditorScrollRatio = ratio
+    lastPreviewScrollRatio = ratio
+
+    if (editorSyncTimeout) {
+      window.clearTimeout(editorSyncTimeout)
+    }
+    editorSyncTimeout = window.setTimeout(() => {
+      isEditorSyncing = false
+      editorSyncTimeout = null
+    }, 50)
+  })
+
   scheduleEditorLayout()
 }
 
@@ -351,6 +401,34 @@ function scheduleEditorLayout() {
   })
 }
 
+registerPreviewScrollHandler((ratio: number) => {
+  if (!editor || isEditorSyncing) {
+    return
+  }
+
+  if (Math.abs(ratio - lastEditorScrollRatio) < 0.01) {
+    lastPreviewScrollRatio = ratio
+    return
+  }
+
+  const layoutInfo = editor.getLayoutInfo()
+  const editorHeight = layoutInfo?.height ?? 0
+  const maxScroll = Math.max(editor.getScrollHeight() - editorHeight, 1)
+
+  isEditorSyncing = true
+  editor.setScrollPosition({ scrollTop: maxScroll * ratio }, monaco.editor.ScrollType.Smooth)
+  lastPreviewScrollRatio = ratio
+  lastEditorScrollRatio = ratio
+
+  if (editorSyncTimeout) {
+    window.clearTimeout(editorSyncTimeout)
+  }
+  editorSyncTimeout = window.setTimeout(() => {
+    isEditorSyncing = false
+    editorSyncTimeout = null
+  }, 50)
+})
+
 // Component event handlers
 function handleTogglePreview() {
   const isNowShowing = togglePreview()
@@ -359,6 +437,15 @@ function handleTogglePreview() {
   }
   nextTick(() => {
     scheduleEditorLayout()
+    if (editor && showPreview.value) {
+      const layoutInfo = editor.getLayoutInfo()
+      const editorHeight = layoutInfo?.height ?? 0
+      const maxScroll = Math.max(editor.getScrollHeight() - editorHeight, 1)
+      const ratio = maxScroll === 0 ? 0 : editor.getScrollTop() / maxScroll
+      setPreviewScrollRatio(ratio)
+      lastEditorScrollRatio = ratio
+      lastPreviewScrollRatio = ratio
+    }
   })
 }
 
@@ -369,7 +456,13 @@ function handleFormatText(format: string) {
 }
 
 async function handleSaveDocument() {
-  await saveDocumentVersion(documentContent.value)
+  console.log('[AuthoringWorkspace] Starting save process, content length:', documentContent.value.length)
+  try {
+    const result = await saveDocumentVersion(documentContent.value)
+    console.log('[AuthoringWorkspace] Save result:', result)
+  } catch (error) {
+    console.error('[AuthoringWorkspace] Save failed:', error)
+  }
 }
 
 async function handleUpdateTitle(newTitle: string) {

@@ -1,30 +1,35 @@
 <template>
   <header class="workspace-header">
     <div class="header-left">
-      <template v-if="documentLoaded">
-        <div class="title-container">
-          <h1
-            v-if="!isEditingTitle"
-            class="document-title"
-            @click="() => startEditTitle(documentTitle)"
-            title="Click to edit title"
-          >
-            {{ documentTitle }}
-          </h1>
-          <input
-            v-else
-            ref="titleInputRef"
-            v-model="editTitleValue"
-            class="document-title-input"
-            type="text"
-            @blur="handleSaveTitle"
-            @keydown.enter="handleSaveTitle"
-            @keydown.escape="cancelEditTitle"
-          />
-        </div>
-      </template>
-      <span v-else class="loading-text">Loading...</span>
-      <span v-if="task" class="task-badge">[{{ task.name }}]</span>
+      <span class="document-icon" title="Document">📄</span>
+      <div class="title-stack">
+        <template v-if="documentLoaded">
+          <div class="title-container">
+            <h1
+              v-if="!isEditingTitle"
+              class="document-title"
+              @click="() => startEditTitle(documentTitle)"
+              title="Click to edit title"
+            >
+              {{ documentTitle }}
+            </h1>
+            <input
+              v-else
+              ref="titleInputRef"
+              v-model="editTitleValue"
+              class="document-title-input"
+              type="text"
+              @blur="handleSaveTitle"
+              @keydown.enter="handleSaveTitle"
+              @keydown.escape="cancelEditTitle"
+            />
+          </div>
+          <div v-if="task" class="task-meta">
+            <span class="task-badge">[{{ task.name }}]</span>
+          </div>
+        </template>
+        <span v-else class="loading-text">Loading...</span>
+      </div>
     </div>
     <div class="header-right">
       <button
@@ -121,10 +126,19 @@ async function handleSaveTitle() {
 
 .header-left {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 12px;
   flex: 1;
   min-width: 0;
+}
+
+.title-stack {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
 }
 
 .title-container {
@@ -133,6 +147,17 @@ async function handleSaveTitle() {
   gap: 8px;
   flex: 1;
   min-width: 0;
+}
+
+.document-icon {
+  font-size: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #edf2f7;
+  color: #2b6cb0;
+  align-self: stretch;
 }
 
 .document-title {
@@ -174,6 +199,12 @@ async function handleSaveTitle() {
   font-size: 16px;
   color: #718096;
   font-style: italic;
+}
+
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .task-badge {

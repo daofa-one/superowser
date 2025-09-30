@@ -10,18 +10,22 @@ export function usePreview() {
   const isScrollSyncing = ref(false)
   const mermaidLoaded = ref(false)
   let mermaidInstance: any = null
+  let previewScrollListener: ((ratio: number) => void) | null = null
+  let previewSyncTimeout: number | null = null
 
   // Initialize markdown renderer
   const md = new MarkdownIt({
     html: true,
     linkify: true,
-    typographer: true
+    typographer: false
   }).use(anchor, {
     permalink: anchor.permalink.linkInsideHeader({
       symbol: '#',
       renderAttrs: () => ({ 'aria-hidden': 'true' })
     })
   })
+
+  md.disable('smartquotes')
 
   // Computed styles for split panes
   const editorPaneStyle = computed(() => ({
@@ -155,14 +159,42 @@ export function usePreview() {
   }
 
   function handlePreviewScroll() {
-    if (isScrollSyncing.value || !previewContentRef.value) return
+    if (!previewContentRef.value || isScrollSyncing.value) return
 
-    // Prevent infinite scroll sync loop
+    const element = previewContentRef.value
+    const maxScroll = Math.max(element.scrollHeight - element.clientHeight, 1)
+    const ratio = element.scrollTop / maxScroll
+
+    if (previewScrollListener) {
+      previewScrollListener(Math.min(Math.max(ratio, 0), 1))
+    }
+  }
+
+  function setPreviewScrollRatio(ratio: number) {
+    if (!previewContentRef.value) return
+
+    const element = previewContentRef.value
+    const clampedRatio = Math.min(Math.max(ratio, 0), 1)
+    const maxScroll = Math.max(element.scrollHeight - element.clientHeight, 1)
+    const targetTop = maxScroll * clampedRatio
+
+    if (Math.abs(element.scrollTop - targetTop) < 1) {
+      return
+    }
+
     isScrollSyncing.value = true
+    element.scrollTo({ top: targetTop, behavior: 'smooth' })
 
-    setTimeout(() => {
+    if (previewSyncTimeout) {
+      window.clearTimeout(previewSyncTimeout)
+    }
+    previewSyncTimeout = window.setTimeout(() => {
       isScrollSyncing.value = false
-    }, 100)
+    }, 120)
+  }
+
+  function registerPreviewScrollHandler(listener: (ratio: number) => void) {
+    previewScrollListener = listener
   }
 
   // Global function for export (accessible from HTML)
@@ -201,6 +233,8 @@ export function usePreview() {
     togglePreview,
     updatePreview,
     debouncedPreviewUpdate,
-    handlePreviewScroll
+    handlePreviewScroll,
+    setPreviewScrollRatio,
+    registerPreviewScrollHandler
   }
 }
