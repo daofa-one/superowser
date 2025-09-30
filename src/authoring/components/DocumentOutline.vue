@@ -1,14 +1,5 @@
 <template>
   <div class="document-outline">
-    <div class="outline-header">
-      <h3>Outline</h3>
-      <button class="collapse-btn" @click="$emit('toggle')" title="Toggle outline">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8 3.5L12.5 8L8 12.5L3.5 8L8 3.5Z"/>
-        </svg>
-      </button>
-    </div>
-
     <div class="outline-content" v-if="headings.length > 0">
       <nav class="outline-nav">
         <a
@@ -47,7 +38,6 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'toggle'): void
   (e: 'headingClick', headingId: string): void
 }
 
@@ -64,48 +54,11 @@ function handleHeadingClick(headingId: string, event: Event) {
 .document-outline {
   display: flex;
   flex-direction: column;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
-  overflow: hidden;
-}
-
-.outline-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: #f5f5f5;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
-}
-
-.outline-header h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 500;
-  color: rgba(0, 0, 0, 0.87);
-  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-}
-
-.collapse-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  color: rgba(0, 0, 0, 0.54);
-  transition: all 0.2s ease-in-out;
-}
-
-.collapse-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
-  color: rgba(0, 0, 0, 0.87);
 }
 
 .outline-content {
-  max-height: 400px;
+  max-height: 300px;
   overflow-y: auto;
-  padding: 8px 0;
 }
 
 .outline-nav {

@@ -23,10 +23,8 @@ export function useKeyboardShortcuts(
       formatText('link')
     })
 
-    // Ctrl+Shift+P for preview toggle
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP, () => {
-      togglePreview()
-    })
+    // Note: Command palette shortcuts are now handled by Monaco commands
+    // Users can access command palette with F1 or Ctrl+Shift+P (if Monaco has focus)
   }
 
   return {

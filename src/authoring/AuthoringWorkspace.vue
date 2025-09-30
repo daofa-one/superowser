@@ -25,17 +25,29 @@
         </div>
 
         <!-- Document outline -->
-        <section class="sidebar-section">
+        <CollapsibleSection
+          title="Document Outline"
+          icon="outline"
+          :count="outlineHeadings.length"
+          section-id="outline"
+          :default-expanded="true"
+        >
           <DocumentOutline
             :headings="outlineHeadings"
             :activeHeading="activeHeading"
             @headingClick="handleHeadingClick"
           />
-        </section>
+        </CollapsibleSection>
 
         <!-- Task pages -->
-        <section v-if="task" class="sidebar-section">
-          <h4>Task Pages</h4>
+        <CollapsibleSection
+          v-if="task"
+          title="Task Pages"
+          icon="pages"
+          :count="taskPages.length"
+          section-id="pages"
+          :default-expanded="true"
+        >
           <div class="reference-list">
             <div
               v-for="page in taskPages"
@@ -51,11 +63,17 @@
               </div>
             </div>
           </div>
-        </section>
+        </CollapsibleSection>
 
         <!-- Task notes -->
-        <section v-if="task" class="sidebar-section">
-          <h4>Task Notes</h4>
+        <CollapsibleSection
+          v-if="task"
+          title="Task Notes"
+          icon="notes"
+          :count="taskNotes.length"
+          section-id="notes"
+          :default-expanded="false"
+        >
           <div class="reference-list">
             <div
               v-for="note in taskNotes"
@@ -70,7 +88,7 @@
               </div>
             </div>
           </div>
-        </section>
+        </CollapsibleSection>
       </aside>
 
       <!-- Editor area -->
@@ -130,6 +148,7 @@
     <button v-if="!showSidebar" class="sidebar-toggle" @click="openSidebar">
       📚
     </button>
+
   </div>
 </template>
 
@@ -139,9 +158,11 @@ import { VueMonacoEditor } from '@guolao/vue-monaco-editor'
 import * as monaco from 'monaco-editor'
 import type { PageEntry, NoteEntry } from '../shared/models'
 
-// Declare chrome global for TypeScript
+// Declare chrome global for TypeScript (if not already declared)
 declare global {
-  const chrome: any
+  interface Window {
+    chrome: any
+  }
 }
 
 // Components
@@ -149,6 +170,7 @@ import WorkspaceHeader from './components/WorkspaceHeader.vue'
 import FormattingToolbar from './components/FormattingToolbar.vue'
 import MarkdownPreview from './components/MarkdownPreview.vue'
 import DocumentOutline from './components/DocumentOutline.vue'
+import CollapsibleSection from './components/CollapsibleSection.vue'
 
 // Composables
 import { useDocumentState } from './composables/useDocumentState'
@@ -156,6 +178,7 @@ import { usePreview } from './composables/usePreview'
 import { useFormatting } from './composables/useFormatting'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useDocumentOutline } from './composables/useDocumentOutline'
+import { useMonacoCommands } from './composables/useMonacoCommands'
 
 // Use composables
 const {
@@ -205,9 +228,10 @@ const editorRef = ref()
 let editor: any = null
 let layoutRaf: number | null = null
 
-// Initialize formatting and keyboard shortcuts once editor is mounted
+// Initialize formatting, keyboard shortcuts, and commands once editor is mounted
 let formatText: (format: string) => void
 let setupKeyboardShortcuts: () => void
+let registerCustomCommands: () => void
 
 const editorOptions = computed(() => ({
   wordWrap: 'on' as const,
@@ -264,6 +288,17 @@ function handleEditorMount(editorInstance: any) {
   const keyboardShortcuts = useKeyboardShortcuts(editor, formatText, togglePreview)
   setupKeyboardShortcuts = keyboardShortcuts.setupKeyboardShortcuts
 
+  const monacoCommands = useMonacoCommands(
+    editor,
+    formatText,
+    togglePreview,
+    handleSaveDocument,
+    exportDocument,
+    handleToggleOutline,
+    scheduleEditorLayout
+  )
+  registerCustomCommands = monacoCommands.registerCustomCommands
+
   try {
     if (monaco.languages) {
       // Disable language services for performance
@@ -287,6 +322,9 @@ function handleEditorMount(editorInstance: any) {
 
   // Set up keyboard shortcuts for formatting
   setupKeyboardShortcuts()
+
+  // Register custom commands for command palette
+  registerCustomCommands()
 
   scheduleEditorLayout()
 }
@@ -339,8 +377,13 @@ async function handleUpdateTitle(newTitle: string) {
 }
 
 function handleHeadingClick(headingId: string) {
-  if (showPreview.value && previewContentRef.value) {
+  if (showPreview.value) {
+    // Scroll to heading in preview if preview is open
     scrollToHeading(headingId)
+  } else {
+    // Could potentially scroll to heading in editor here
+    // For now, just opening preview would be sufficient
+    console.log('Navigate to heading:', headingId)
   }
 }
 
@@ -374,7 +417,7 @@ async function loadTaskPages() {
   if (!task.value?.id) return
 
   try {
-    const response = await chrome.runtime.sendMessage({
+    const response = await window.chrome.runtime.sendMessage({
       type: 'GET_TASK_PAGES',
       data: { taskId: task.value.id }
     })
@@ -391,7 +434,7 @@ async function loadTaskNotes() {
   if (!task.value?.id) return
 
   try {
-    const response = await chrome.runtime.sendMessage({
+    const response = await window.chrome.runtime.sendMessage({
       type: 'GET_TASK_NOTES',
       data: { taskId: task.value.id }
     })
@@ -563,6 +606,18 @@ function formatDate(date: Date | string): string {
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString()
 }
 
+
+function handleToggleOutline() {
+  // Toggle the outline section
+  const outlineSection = window.document.querySelector('[section-id="outline"]')
+  if (outlineSection) {
+    const button = outlineSection.querySelector('button')
+    if (button) {
+      button.click()
+    }
+  }
+}
+
 // Watchers for layout updates
 watch(showSidebar, () => {
   nextTick(() => {
@@ -584,9 +639,9 @@ watch(documentContent, () => {
   updateHeadingsFromContent(documentContent.value)
 })
 
-// Initialize outline when preview is available
+// Initialize outline for scroll functionality when preview is available
 watch(previewContentRef, (newRef) => {
-  if (newRef) {
+  if (newRef && showPreview.value) {
     nextTick(() => {
       initializeOutline(newRef)
     })
@@ -609,12 +664,17 @@ watch(previewContentRef, (newRef) => {
 }
 
 .workspace-sidebar {
-  width: 320px;
+  width: 340px;
   background: #f7fafc;
   border-right: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.workspace-sidebar > * + * {
+  margin-top: 0;
 }
 
 .sidebar-header {
@@ -624,6 +684,7 @@ watch(previewContentRef, (newRef) => {
   padding: 16px;
   border-bottom: 1px solid #e2e8f0;
   background: white;
+  margin-bottom: 0;
 }
 
 .sidebar-header h3 {
@@ -652,17 +713,6 @@ watch(previewContentRef, (newRef) => {
   color: #2d3748;
 }
 
-.sidebar-section {
-  padding: 16px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.sidebar-section h4 {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #4a5568;
-}
 
 .reference-list {
   display: flex;

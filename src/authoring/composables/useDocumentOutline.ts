@@ -78,10 +78,17 @@ export function useDocumentOutline() {
     headings.value = extractHeadingsFromContent(content)
   }
 
-  // Update headings from DOM
+  // Update headings from DOM (for scroll/intersection functionality only)
   function updateHeadingsFromDOM() {
     if (previewElement.value) {
-      headings.value = extractHeadingsFromDOM(previewElement.value)
+      const domHeadings = extractHeadingsFromDOM(previewElement.value)
+      // Merge DOM elements with existing markdown-based headings
+      domHeadings.forEach(domHeading => {
+        const existing = headings.value.find(h => h.id === domHeading.id)
+        if (existing) {
+          existing.element = domHeading.element
+        }
+      })
     }
   }
 
@@ -100,6 +107,9 @@ export function useDocumentOutline() {
   // Set up intersection observer to track active heading
   function setupIntersectionObserver() {
     if (!previewElement.value || headings.value.length === 0) return
+
+    // First update DOM elements
+    updateHeadingsFromDOM()
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -124,7 +134,7 @@ export function useDocumentOutline() {
       }
     )
 
-    // Observe all heading elements
+    // Observe all heading elements that have DOM elements
     headings.value.forEach(heading => {
       if (heading.element) {
         observer.observe(heading.element)
@@ -134,12 +144,12 @@ export function useDocumentOutline() {
     return observer
   }
 
-  // Initialize outline functionality
+  // Initialize outline functionality (for scroll and intersection observer only)
   function initializeOutline(previewContainer: HTMLElement) {
     previewElement.value = previewContainer
 
     nextTick(() => {
-      updateHeadingsFromDOM()
+      // Setup intersection observer for active heading tracking
       setupIntersectionObserver()
     })
   }
