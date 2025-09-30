@@ -4,7 +4,34 @@
     <header class="workspace-header">
       <div class="header-left">
         <template v-if="documentLoaded">
-          <h1 class="document-title">{{ documentTitle }}</h1>
+          <div class="title-container">
+            <h1
+              v-if="!isEditingTitle"
+              class="document-title"
+              @click="startEditTitle"
+              title="Click to edit title"
+            >
+              {{ documentTitle }}
+            </h1>
+            <input
+              v-else
+              ref="titleInputRef"
+              v-model="editTitleValue"
+              class="document-title-input"
+              type="text"
+              @blur="saveTitle"
+              @keydown.enter="saveTitle"
+              @keydown.escape="cancelEditTitle"
+            />
+            <!-- <button
+              v-if="!isEditingTitle"
+              class="edit-title-btn"
+              @click="startEditTitle"
+              title="Edit title"
+            >
+              ✏️
+            </button> -->
+          </div>
         </template>
         <span v-else class="loading-text">Loading...</span>
         <span v-if="task" class="task-badge">[{{ task.name }}]</span>
@@ -133,6 +160,11 @@ const showSidebar = ref(true)
 const showVersions = ref(false)
 const saving = ref(false)
 const isDragOver = ref(false)
+
+// Title editing
+const isEditingTitle = ref(false)
+const editTitleValue = ref('')
+const titleInputRef = ref<HTMLInputElement>()
 
 // Monaco editor
 const editorRef = ref()
@@ -591,4 +623,460 @@ function formatDate(date: Date | string): string {
   const d = new Date(date)
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString()
 }
+
+// Title editing functions
+function startEditTitle() {
+  if (!document.value) return
+
+  isEditingTitle.value = true
+  editTitleValue.value = document.value.title || ''
+
+  nextTick(() => {
+    if (titleInputRef.value) {
+      titleInputRef.value.focus()
+      titleInputRef.value.select()
+    }
+  })
+}
+
+function cancelEditTitle() {
+  isEditingTitle.value = false
+  editTitleValue.value = ''
+}
+
+async function saveTitle() {
+  if (!document.value || !editTitleValue.value.trim()) {
+    cancelEditTitle()
+    return
+  }
+
+  const newTitle = editTitleValue.value.trim()
+
+  // Don't save if title hasn't changed
+  if (newTitle === document.value.title) {
+    cancelEditTitle()
+    return
+  }
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'UPDATE_DOCUMENT',
+      data: {
+        documentId: document.value.id,
+        updates: { title: newTitle }
+      }
+    })
+
+    if (isSuccessResponse(response)) {
+      // Update local document state
+      document.value.title = newTitle
+    } else {
+      console.error('Failed to update document title:', response)
+    }
+  } catch (error) {
+    console.error('Failed to update document title:', error)
+  }
+
+  isEditingTitle.value = false
+  editTitleValue.value = ''
+}
 </script>
+
+<style scoped>
+.authoring-workspace {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.workspace-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+  min-height: 60px;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.title-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.document-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+  margin: 0;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.document-title:hover {
+  background-color: #e2e8f0;
+}
+
+.document-title-input {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+  background: white;
+  border: 2px solid #3182ce;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin: 0;
+  outline: none;
+  flex: 1;
+  min-width: 200px;
+  font-family: inherit;
+}
+
+.edit-title-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  opacity: 0.6;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.edit-title-btn:hover {
+  background-color: #e2e8f0;
+  opacity: 1;
+}
+
+.loading-text {
+  font-size: 16px;
+  color: #718096;
+  font-style: italic;
+}
+
+.task-badge {
+  background: #e2e8f0;
+  color: #4a5568;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.header-right {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.export-btn,
+.save-btn,
+.versions-btn {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.export-btn:hover,
+.save-btn:hover,
+.versions-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.workspace-main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.workspace-sidebar {
+  width: 320px;
+  background: #f7fafc;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  background: white;
+}
+
+.sidebar-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.close-sidebar {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #718096;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.close-sidebar:hover {
+  background: #e2e8f0;
+  color: #2d3748;
+}
+
+.sidebar-section {
+  padding: 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.sidebar-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.reference-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.reference-item {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: grab;
+  transition: all 0.2s;
+}
+
+.reference-item:hover {
+  border-color: #cbd5e0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.reference-item:active {
+  cursor: grabbing;
+}
+
+.favicon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.reference-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.reference-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #2d3748;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-url,
+.reference-meta {
+  font-size: 11px;
+  color: #718096;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-container {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.editor-container.drag-over::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(59, 130, 246, 0.1);
+  border: 2px dashed #3b82f6;
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.monaco-editor-wrapper {
+  height: 100%;
+}
+
+.version-panel {
+  width: 300px;
+  background: #f7fafc;
+  border-left: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  background: white;
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.close-panel {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #718096;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.close-panel:hover {
+  background: #e2e8f0;
+  color: #2d3748;
+}
+
+.version-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.version-item {
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.version-item:hover {
+  border-color: #cbd5e0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.version-item.active {
+  border-color: #3182ce;
+  background: #ebf8ff;
+}
+
+.version-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.version-date {
+  font-size: 12px;
+  color: #4a5568;
+  font-weight: 500;
+}
+
+.version-author {
+  font-size: 11px;
+  color: #718096;
+}
+
+.version-summary {
+  font-size: 12px;
+  color: #2d3748;
+  line-height: 1.4;
+}
+
+.sidebar-toggle {
+  position: fixed;
+  left: 16px;
+  bottom: 20px;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 24px;
+  background: #3182ce;
+  color: white;
+  font-size: 18px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(49, 130, 206, 0.3);
+  transition: all 0.2s;
+  z-index: 100;
+}
+
+.sidebar-toggle:hover {
+  background: #2c5aa0;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(49, 130, 206, 0.4);
+}
+</style>
