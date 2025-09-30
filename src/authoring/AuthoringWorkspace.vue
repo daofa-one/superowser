@@ -37,6 +37,9 @@
         <span v-if="task" class="task-badge">[{{ task.name }}]</span>
       </div>
       <div class="header-right">
+        <button class="preview-btn" :class="{ active: showPreview }" @click="togglePreview" title="Toggle preview">
+          👁️ Preview
+        </button>
         <button class="export-btn" :disabled="!documentLoaded || !document" title="Export document" @click="exportDocument">
           Export
         </button>
@@ -100,16 +103,148 @@
 
       <!-- Editor area -->
       <main class="editor-container" :class="{ 'drag-over': isDragOver }">
-        <VueMonacoEditor
-          ref="editorRef"
-          v-model:value="editorContent"
-          :options="editorOptions"
-          :language="'markdown'"
-          :theme="'vs'"
-          class="monaco-editor-wrapper"
-          @mount="handleEditorMount"
-          @change="handleContentChange"
-        />
+        <div class="editor-pane" :style="editorPaneStyle">
+          <!-- Formatting toolbar -->
+          <div class="formatting-toolbar">
+            <div class="toolbar-group">
+              <button
+                class="toolbar-btn"
+                title="Bold (Ctrl+B)"
+                @click="formatText('bold')"
+              >
+                <strong>B</strong>
+              </button>
+              <button
+                class="toolbar-btn"
+                title="Italic (Ctrl+I)"
+                @click="formatText('italic')"
+              >
+                <em>I</em>
+              </button>
+              <button
+                class="toolbar-btn"
+                title="Strikethrough"
+                @click="formatText('strikethrough')"
+              >
+                <s>S</s>
+              </button>
+            </div>
+
+            <div class="toolbar-separator"></div>
+
+            <div class="toolbar-group">
+              <button
+                class="toolbar-btn"
+                title="Heading 1"
+                @click="formatText('h1')"
+              >
+                H1
+              </button>
+              <button
+                class="toolbar-btn"
+                title="Heading 2"
+                @click="formatText('h2')"
+              >
+                H2
+              </button>
+              <button
+                class="toolbar-btn"
+                title="Heading 3"
+                @click="formatText('h3')"
+              >
+                H3
+              </button>
+            </div>
+
+            <div class="toolbar-separator"></div>
+
+            <div class="toolbar-group">
+              <button
+                class="toolbar-btn"
+                title="Unordered List"
+                @click="formatText('ul')"
+              >
+                • List
+              </button>
+              <button
+                class="toolbar-btn"
+                title="Ordered List"
+                @click="formatText('ol')"
+              >
+                1. List
+              </button>
+              <button
+                class="toolbar-btn"
+                title="Checkbox List"
+                @click="formatText('checkbox')"
+              >
+                ☑ Task
+              </button>
+            </div>
+
+            <div class="toolbar-separator"></div>
+
+            <div class="toolbar-group">
+              <button
+                class="toolbar-btn"
+                title="Link (Ctrl+K)"
+                @click="formatText('link')"
+              >
+                🔗 Link
+              </button>
+              <button
+                class="toolbar-btn"
+                title="Code Block"
+                @click="formatText('code')"
+              >
+                &lt;/&gt; Code
+              </button>
+              <button
+                class="toolbar-btn"
+                title="Quote"
+                @click="formatText('quote')"
+              >
+                💬 Quote
+              </button>
+              <button
+                class="toolbar-btn"
+                title="Mermaid Diagram"
+                @click="formatText('mermaid')"
+              >
+                📊 Diagram
+              </button>
+            </div>
+          </div>
+
+          <VueMonacoEditor
+            ref="editorRef"
+            v-model:value="editorContent"
+            :options="editorOptions"
+            :language="'markdown'"
+            :theme="'vs'"
+            class="monaco-editor-wrapper"
+            @mount="handleEditorMount"
+            @change="handleContentChange"
+          />
+        </div>
+
+        <!-- Preview pane -->
+        <div
+          v-if="showPreview"
+          class="preview-pane"
+          :style="previewPaneStyle"
+        >
+          <div class="preview-header">
+            <h3>Preview</h3>
+            <button class="close-preview" @click="togglePreview" title="Close preview">×</button>
+          </div>
+          <div
+            ref="previewContentRef"
+            class="preview-content"
+            v-html="renderedContent"
+            @scroll="handlePreviewScroll"
+          ></div>
+        </div>
       </main>
 
       <!-- Version panel -->
@@ -147,6 +282,8 @@
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import { VueMonacoEditor } from '@guolao/vue-monaco-editor'
 import * as monaco from 'monaco-editor'
+import MarkdownIt from 'markdown-it'
+import anchor from 'markdown-it-anchor'
 import { DocumentEntry, DocumentVersionEntry, TaskEntry, PageEntry, NoteEntry } from '../shared/models'
 
 // State
@@ -166,6 +303,14 @@ const isEditingTitle = ref(false)
 const editTitleValue = ref('')
 const titleInputRef = ref<HTMLInputElement>()
 
+// Preview functionality
+const showPreview = ref(false)
+const previewContentRef = ref<HTMLElement>()
+const renderedContent = ref('')
+const isScrollSyncing = ref(false)
+const mermaidLoaded = ref(false)
+let mermaidInstance: any = null
+
 // Monaco editor
 const editorRef = ref()
 const editorContent = ref('')
@@ -174,6 +319,28 @@ let layoutRaf: number | null = null
 
 // Editor options
 const documentTitle = computed(() => document.value?.title?.trim() || 'Untitled Draft')
+
+// Computed styles for split panes
+const editorPaneStyle = computed(() => ({
+  width: showPreview.value ? '50%' : '100%',
+  borderRight: showPreview.value ? '1px solid #e2e8f0' : 'none'
+}))
+
+const previewPaneStyle = computed(() => ({
+  width: '50%'
+}))
+
+// Initialize markdown renderer
+const md = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: true
+}).use(anchor, {
+  permalink: anchor.permalink.linkInsideHeader({
+    symbol: '#',
+    renderAttrs: () => ({ 'aria-hidden': 'true' })
+  })
+})
 
 const editorOptions = computed(() => ({
   wordWrap: 'on' as const,
@@ -270,12 +437,17 @@ function handleEditorMount(editorInstance: any) {
     editorDomNode.addEventListener('dragleave', handleDragLeave)
   }
 
+  // Set up keyboard shortcuts for formatting
+  setupKeyboardShortcuts()
+
   scheduleEditorLayout()
 }
 
 function handleContentChange() {
   // Auto-save after changes (debounced)
   debouncedSave()
+  // Update preview (debounced)
+  debouncedPreviewUpdate()
 }
 
 function scheduleEditorLayout() {
@@ -624,6 +796,311 @@ function formatDate(date: Date | string): string {
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString()
 }
 
+// Preview functionality
+function togglePreview() {
+  showPreview.value = !showPreview.value
+
+  if (showPreview.value) {
+    updatePreview()
+  }
+
+  // Re-layout editor after preview toggle
+  nextTick(() => {
+    scheduleEditorLayout()
+  })
+}
+
+async function updatePreview() {
+  if (!showPreview.value) return
+
+  try {
+    let content = editorContent.value || ''
+
+    // First, render basic markdown
+    let htmlContent = md.render(content)
+
+    // Check if there are Mermaid diagrams and load library if needed
+    const hasMermaid = /```mermaid\n([\s\S]*?)\n```/g.test(content)
+
+    if (hasMermaid) {
+      await loadMermaid()
+      htmlContent = await renderMermaidDiagrams(htmlContent, content)
+    }
+
+    renderedContent.value = htmlContent
+
+    // Render Mermaid diagrams after content is updated
+    if (hasMermaid && mermaidInstance) {
+      nextTick(() => {
+        renderMermaidInDOM()
+      })
+    }
+  } catch (error) {
+    console.error('Failed to render markdown:', error)
+    renderedContent.value = '<p>Error rendering markdown</p>'
+  }
+}
+
+let previewUpdateTimeout: number | null = null
+function debouncedPreviewUpdate() {
+  if (previewUpdateTimeout) {
+    clearTimeout(previewUpdateTimeout)
+  }
+  previewUpdateTimeout = window.setTimeout(() => {
+    updatePreview()
+  }, 300) // 300ms debounce
+}
+
+function handlePreviewScroll() {
+  if (isScrollSyncing.value || !editor || !previewContentRef.value) return
+
+  // Prevent infinite scroll sync loop
+  isScrollSyncing.value = true
+
+  setTimeout(() => {
+    isScrollSyncing.value = false
+  }, 100)
+}
+
+// Watch for editor content changes to update preview
+watch(editorContent, () => {
+  if (showPreview.value) {
+    debouncedPreviewUpdate()
+  }
+})
+
+// Watch for preview toggle to re-layout
+watch(showPreview, () => {
+  nextTick(() => {
+    scheduleEditorLayout()
+  })
+})
+
+// Mermaid functions
+async function loadMermaid() {
+  if (mermaidLoaded.value) return
+
+  try {
+    // Dynamic import for lazy loading
+    const mermaid = await import('mermaid')
+    mermaidInstance = mermaid.default
+
+    // Configure Mermaid
+    mermaidInstance.initialize({
+      startOnLoad: false,
+      theme: 'default',
+      securityLevel: 'strict',
+      fontFamily: 'arial',
+      fontSize: 14
+    })
+
+    mermaidLoaded.value = true
+  } catch (error) {
+    console.error('Failed to load Mermaid:', error)
+  }
+}
+
+async function renderMermaidDiagrams(htmlContent: string, markdownContent: string): Promise<string> {
+  if (!mermaidInstance) return htmlContent
+
+  // Find all mermaid code blocks in the markdown
+  const mermaidRegex = /```mermaid\n([\s\S]*?)\n```/g
+  let match
+  let processedContent = htmlContent
+  let diagramIndex = 0
+
+  while ((match = mermaidRegex.exec(markdownContent)) !== null) {
+    const diagramCode = match[1].trim()
+    const diagramId = `mermaid-diagram-${diagramIndex++}`
+
+    // Replace the code block with a mermaid container
+    const codeBlockPattern = new RegExp(`<pre><code class="language-mermaid">[\\s\\S]*?</code></pre>`)
+    const mermaidContainer = `
+      <div class="mermaid-container">
+        <div id="${diagramId}" class="mermaid-diagram" data-diagram="${encodeURIComponent(diagramCode)}">
+          Loading diagram...
+        </div>
+        <div class="mermaid-controls">
+          <button class="mermaid-export-btn" onclick="exportMermaidDiagram('${diagramId}')" title="Export as SVG">
+            📥 Export SVG
+          </button>
+        </div>
+      </div>
+    `
+    processedContent = processedContent.replace(codeBlockPattern, mermaidContainer)
+  }
+
+  return processedContent
+}
+
+function renderMermaidInDOM() {
+  if (!mermaidInstance || !previewContentRef.value) return
+
+  const mermaidElements = previewContentRef.value.querySelectorAll('.mermaid-diagram')
+
+  mermaidElements.forEach(async (element: any) => {
+    const diagramCode = decodeURIComponent(element.dataset.diagram)
+    const diagramId = element.id
+
+    try {
+      const { svg } = await mermaidInstance.render(diagramId + '-svg', diagramCode)
+      element.innerHTML = svg
+    } catch (error) {
+      console.error('Failed to render Mermaid diagram:', error)
+      element.innerHTML = '<p style="color: red;">Error rendering diagram</p>'
+    }
+  })
+}
+
+// Global function for export (accessible from HTML)
+;(window as any).exportMermaidDiagram = function(diagramId: string) {
+  const element = document.getElementById(diagramId)
+  if (!element) return
+
+  const svgElement = element.querySelector('svg')
+  if (!svgElement) return
+
+  const svgData = new XMLSerializer().serializeToString(svgElement)
+  const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+  const svgUrl = URL.createObjectURL(svgBlob)
+
+  const downloadLink = document.createElement('a')
+  downloadLink.href = svgUrl
+  downloadLink.download = `${diagramId}.svg`
+  document.body.appendChild(downloadLink)
+  downloadLink.click()
+  document.body.removeChild(downloadLink)
+  URL.revokeObjectURL(svgUrl)
+}
+
+// Formatting functions
+function formatText(format: string) {
+  if (!editor) return
+
+  const selection = editor.getSelection()
+  const model = editor.getModel()
+  if (!model || !selection) return
+
+  const selectedText = model.getValueInRange(selection)
+  let formattedText = ''
+  let cursorOffset = 0
+
+  switch (format) {
+    case 'bold':
+      formattedText = `**${selectedText}**`
+      cursorOffset = selectedText ? 0 : 2
+      break
+    case 'italic':
+      formattedText = `*${selectedText}*`
+      cursorOffset = selectedText ? 0 : 1
+      break
+    case 'strikethrough':
+      formattedText = `~~${selectedText}~~`
+      cursorOffset = selectedText ? 0 : 2
+      break
+    case 'h1':
+      formattedText = `# ${selectedText}`
+      cursorOffset = selectedText ? 0 : 2
+      break
+    case 'h2':
+      formattedText = `## ${selectedText}`
+      cursorOffset = selectedText ? 0 : 3
+      break
+    case 'h3':
+      formattedText = `### ${selectedText}`
+      cursorOffset = selectedText ? 0 : 4
+      break
+    case 'ul':
+      formattedText = `- ${selectedText}`
+      cursorOffset = selectedText ? 0 : 2
+      break
+    case 'ol':
+      formattedText = `1. ${selectedText}`
+      cursorOffset = selectedText ? 0 : 3
+      break
+    case 'checkbox':
+      formattedText = `- [ ] ${selectedText}`
+      cursorOffset = selectedText ? 0 : 6
+      break
+    case 'link':
+      if (selectedText) {
+        formattedText = `[${selectedText}](url)`
+        cursorOffset = -4
+      } else {
+        formattedText = '[text](url)'
+        cursorOffset = -9
+      }
+      break
+    case 'code':
+      if (selectedText.includes('\n')) {
+        formattedText = `\`\`\`\n${selectedText}\n\`\`\``
+        cursorOffset = selectedText ? 0 : 4
+      } else {
+        formattedText = `\`${selectedText}\``
+        cursorOffset = selectedText ? 0 : 1
+      }
+      break
+    case 'quote':
+      formattedText = `> ${selectedText}`
+      cursorOffset = selectedText ? 0 : 2
+      break
+    case 'mermaid':
+      if (selectedText) {
+        formattedText = `\`\`\`mermaid\n${selectedText}\n\`\`\``
+        cursorOffset = 0
+      } else {
+        formattedText = `\`\`\`mermaid\nflowchart TD\n    A[Start] --> B[End]\n\`\`\``
+        cursorOffset = -26 // Position cursor after "flowchart TD\n    "
+      }
+      break
+    default:
+      return
+  }
+
+  // Replace the selected text
+  model.pushEditOperations([], [{
+    range: selection,
+    text: formattedText
+  }], () => null)
+
+  // Update cursor position
+  if (cursorOffset !== 0) {
+    const newPosition = {
+      lineNumber: selection.endLineNumber,
+      column: selection.endColumn + formattedText.length + cursorOffset
+    }
+    editor.setPosition(newPosition)
+  }
+
+  // Focus back to editor
+  editor.focus()
+}
+
+// Keyboard shortcuts setup
+function setupKeyboardShortcuts() {
+  if (!editor) return
+
+  // Ctrl+B for bold
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => {
+    formatText('bold')
+  })
+
+  // Ctrl+I for italic
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => {
+    formatText('italic')
+  })
+
+  // Ctrl+K for link
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
+    formatText('link')
+  })
+
+  // Ctrl+Shift+P for preview toggle
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP, () => {
+    togglePreview()
+  })
+}
+
 // Title editing functions
 function startEditTitle() {
   if (!document.value) return
@@ -794,7 +1271,8 @@ async function saveTitle() {
 
 .export-btn,
 .save-btn,
-.versions-btn {
+.versions-btn,
+.preview-btn {
   padding: 8px 16px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
@@ -808,9 +1286,16 @@ async function saveTitle() {
 
 .export-btn:hover,
 .save-btn:hover,
-.versions-btn:hover {
+.versions-btn:hover,
+.preview-btn:hover {
   background: #f3f4f6;
   border-color: #9ca3af;
+}
+
+.preview-btn.active {
+  background: #3182ce;
+  color: white;
+  border-color: #3182ce;
 }
 
 .save-btn:disabled {
@@ -943,6 +1428,297 @@ async function saveTitle() {
   flex: 1;
   min-width: 0;
   position: relative;
+  display: flex;
+  overflow: hidden;
+}
+
+.editor-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  transition: width 0.3s ease;
+}
+
+.formatting-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.formatting-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.toolbar-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.toolbar-btn:active {
+  background: #e5e7eb;
+  border-color: #6b7280;
+}
+
+.toolbar-btn strong,
+.toolbar-btn em,
+.toolbar-btn s {
+  font-style: normal;
+  text-decoration: none;
+  font-weight: inherit;
+}
+
+.toolbar-btn strong {
+  font-weight: 700;
+}
+
+.toolbar-btn em {
+  font-style: italic;
+}
+
+.toolbar-btn s {
+  text-decoration: line-through;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 20px;
+  background: #d1d5db;
+  margin: 0 4px;
+}
+
+.preview-pane {
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border-left: 1px solid #e2e8f0;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.preview-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.close-preview {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #718096;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.close-preview:hover {
+  background: #e2e8f0;
+  color: #2d3748;
+}
+
+.preview-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.6;
+  color: #2d3748;
+}
+
+.preview-content h1,
+.preview-content h2,
+.preview-content h3,
+.preview-content h4,
+.preview-content h5,
+.preview-content h6 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #1a202c;
+}
+
+.preview-content h1 {
+  font-size: 2em;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.3em;
+}
+
+.preview-content h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.3em;
+}
+
+.preview-content h3 {
+  font-size: 1.25em;
+}
+
+.preview-content h4 {
+  font-size: 1em;
+}
+
+.preview-content p {
+  margin-bottom: 1em;
+}
+
+.preview-content ul,
+.preview-content ol {
+  padding-left: 2em;
+  margin-bottom: 1em;
+}
+
+.preview-content li {
+  margin-bottom: 0.25em;
+}
+
+.preview-content blockquote {
+  margin: 1em 0;
+  padding-left: 1em;
+  border-left: 4px solid #e2e8f0;
+  color: #4a5568;
+  font-style: italic;
+}
+
+.preview-content code {
+  background: #f7fafc;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.875em;
+}
+
+.preview-content pre {
+  background: #f7fafc;
+  padding: 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.preview-content pre code {
+  background: none;
+  padding: 0;
+}
+
+.preview-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+
+.preview-content th,
+.preview-content td {
+  border: 1px solid #e2e8f0;
+  padding: 0.5em;
+  text-align: left;
+}
+
+.preview-content th {
+  background: #f7fafc;
+  font-weight: 600;
+}
+
+.preview-content a {
+  color: #3182ce;
+  text-decoration: none;
+}
+
+.preview-content a:hover {
+  text-decoration: underline;
+}
+
+.preview-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-container {
+  margin: 1.5em 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: white;
+}
+
+.mermaid-diagram {
+  padding: 20px;
+  text-align: center;
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-controls {
+  padding: 8px 12px;
+  background: #f7fafc;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mermaid-export-btn {
+  background: #3182ce;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.mermaid-export-btn:hover {
+  background: #2c5aa0;
 }
 
 .editor-container.drag-over::before {
