@@ -1,6 +1,6 @@
 <template>
   <div class="document-outline">
-    <div class="outline-content" v-if="headings.length > 0">
+    <div v-if="headings.length > 0" class="outline-content">
       <nav class="outline-nav">
         <a
           v-for="heading in headings"

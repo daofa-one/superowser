@@ -50,6 +50,7 @@ export interface IDocumentService {
 
 export interface IDocumentVersionService {
   create(data: SaveDocumentVersionRequest): Promise<DocumentVersionEntry>
+  update(id: string, updates: Partial<DocumentVersionEntry>): Promise<DocumentVersionEntry>
   getById(id: string): Promise<DocumentVersionEntry | null>
   getByDocument(documentId: string, limit?: number): Promise<DocumentVersionEntry[]>
   delete(id: string): Promise<void>

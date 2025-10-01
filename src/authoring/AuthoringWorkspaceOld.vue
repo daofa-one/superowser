@@ -3,16 +3,16 @@
     <!-- Header -->
     <WorkspaceHeader
       :document="document"
-      :documentLoaded="documentLoaded"
-      :documentTitle="documentTitle"
+      :document-loaded="documentLoaded"
+      :document-title="documentTitle"
       :task="task"
       :saving="saving"
-      :showPreview="showPreview"
-      @togglePreview="handleTogglePreview"
-      @exportDocument="exportDocument"
-      @saveDocument="handleSaveDocument"
-      @toggleVersions="showVersions = !showVersions"
-      @updateTitle="handleUpdateTitle"
+      :show-preview="showPreview"
+      @toggle-preview="handleTogglePreview"
+      @export-document="exportDocument"
+      @save-document="handleSaveDocument"
+      @toggle-versions="showVersions = !showVersions"
+      @update-title="handleUpdateTitle"
     />
 
     <!-- Main content area -->
@@ -68,7 +68,7 @@
       <main class="editor-container" :class="{ 'drag-over': isDragOver }">
         <div class="editor-pane" :style="editorPaneStyle">
           <!-- Formatting toolbar -->
-          <FormattingToolbar @formatText="handleFormatText" />
+          <FormattingToolbar @format-text="handleFormatText" />
 
           <VueMonacoEditor
             ref="editorRef"
@@ -85,9 +85,9 @@
         <!-- Preview pane -->
         <MarkdownPreview
           v-if="showPreview"
-          v-model:previewContentRef="previewContentRef"
-          :renderedContent="renderedContent"
-          :previewPaneStyle="previewPaneStyle"
+          v-model:preview-content-ref="previewContentRef"
+          :rendered-content="renderedContent"
+          :preview-pane-style="previewPaneStyle"
           @close="handleTogglePreview"
           @scroll="handlePreviewScroll"
         />

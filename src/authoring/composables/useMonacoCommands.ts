@@ -259,7 +259,7 @@ export function useMonacoCommands(
     if (!model) return
 
     let linkText = 'Link text'
-    let linkUrl = 'https://example.com'
+    const linkUrl = 'https://example.com'
 
     // If there's selected text, use it as link text
     if (selection && !selection.isEmpty()) {

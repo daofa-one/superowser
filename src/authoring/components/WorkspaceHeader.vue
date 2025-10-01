@@ -8,8 +8,8 @@
             <h1
               v-if="!isEditingTitle"
               class="document-title"
-              @click="() => startEditTitle(documentTitle)"
               title="Click to edit title"
+              @click="() => startEditTitle(documentTitle)"
             >
               {{ documentTitle }}
             </h1>
@@ -32,13 +32,32 @@
       </div>
     </div>
     <div class="header-right">
+      <!-- Version Indicator -->
+      <VersionIndicator
+        v-if="documentLoaded && document"
+        :current-version="currentVersion"
+        :versions="versions"
+        :has-unsaved-changes="hasUnsavedChanges"
+        :change-count="changeCount"
+        :is-saving="saving"
+        :is-auto-saving="isAutoSaving"
+        :auto-save-enabled="autoSaveEnabled"
+        :auto-save-interval="autoSaveInterval"
+        @quick-save="$emit('saveDocument')"
+        @create-version="$emit('createVersion')"
+        @show-history="$emit('toggleVersions')"
+        @show-settings="$emit('showVersionSettings')"
+        @compare-versions="$emit('compareVersions')"
+        @export-version="$emit('exportDocument')"
+      />
+
       <button
         class="preview-btn"
         :class="{ active: showPreview }"
-        @click="$emit('togglePreview')"
         title="Toggle preview"
+        @click="$emit('togglePreview')"
       >
-        👁️ Preview
+        Preview
       </button>
       <button
         class="export-btn"
@@ -68,7 +87,8 @@
 
 <script setup lang="ts">
 import { useTitleEditing } from '../composables/useTitleEditing'
-import type { DocumentEntry, TaskEntry } from '../../shared/models'
+import VersionIndicator from './VersionIndicator.vue'
+import type { DocumentEntry, TaskEntry, DocumentVersionEntry } from '../../shared/models'
 
 interface Props {
   document: DocumentEntry | null
@@ -77,6 +97,13 @@ interface Props {
   task: TaskEntry | null
   saving: boolean
   showPreview: boolean
+  currentVersion?: DocumentVersionEntry
+  versions: DocumentVersionEntry[]
+  hasUnsavedChanges: boolean
+  changeCount: number
+  isAutoSaving: boolean
+  autoSaveEnabled: boolean
+  autoSaveInterval: number
 }
 
 interface Emits {
@@ -85,6 +112,9 @@ interface Emits {
   (e: 'saveDocument'): void
   (e: 'toggleVersions'): void
   (e: 'updateTitle', newTitle: string): void
+  (e: 'createVersion'): void
+  (e: 'showVersionSettings'): void
+  (e: 'compareVersions'): void
 }
 
 const props = defineProps<Props>()
@@ -98,7 +128,7 @@ const {
   startEditTitle,
   cancelEditTitle,
   saveTitle
-} = useTitleEditing(async (updates) => {
+} = useTitleEditing(async () => {
   // This would call the parent's update function
   return true // Placeholder - will be handled by parent
 })

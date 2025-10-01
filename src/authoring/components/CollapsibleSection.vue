@@ -2,14 +2,14 @@
   <div class="collapsible-section" :class="{ collapsed: !isExpanded }">
     <button
       class="section-header"
-      @click="toggleExpanded"
-      @mousedown.prevent
       :aria-expanded="isExpanded"
       :aria-controls="`section-${sectionId}`"
       tabindex="-1"
+      @click="toggleExpanded"
+      @mousedown.prevent
     >
       <div class="section-title">
-        <div class="section-icon" v-if="icon">
+        <div v-if="icon" class="section-icon">
           <svg v-if="icon === 'outline'" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path d="M2 3h12v1H2V3zm0 3h12v1H2V6zm0 3h12v1H2V9zm0 3h12v1H2v-1z"/>
           </svg>

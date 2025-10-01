@@ -49,6 +49,144 @@
         </div>
         <p id="ai-status-message" class="status"></p>
       </section>
+
+      <section class="options-section">
+        <h2>Version Management</h2>
+        <p class="section-description">Configure how document versions are saved, managed, and cleaned up in the authoring workspace.</p>
+
+        <!-- Auto-save Settings -->
+        <div class="field">
+          <span class="field-label">Auto-save behavior</span>
+          <div class="field-toggle">
+            <input type="checkbox" id="version-auto-save-enabled" />
+            <span>Enable automatic version creation</span>
+          </div>
+          <p class="field-helper">When enabled, versions are created automatically based on content changes and time intervals.</p>
+        </div>
+
+        <div class="field" id="auto-save-options">
+          <span class="field-label">Auto-save interval</span>
+          <select id="version-auto-save-interval" class="field-control">
+            <option value="60000">1 minute</option>
+            <option value="300000">5 minutes</option>
+            <option value="600000">10 minutes</option>
+            <option value="1800000">30 minutes</option>
+          </select>
+        </div>
+
+        <div class="field" id="auto-save-mode-field">
+          <span class="field-label">Auto-save strategy</span>
+          <select id="version-auto-save-mode" class="field-control">
+            <option value="smart">Smart (recommended)</option>
+            <option value="content_change">On content change</option>
+            <option value="time_based">Time-based only</option>
+          </select>
+          <p class="field-helper">Smart mode detects significant changes and creates versions intelligently.</p>
+        </div>
+
+        <!-- Storage Management -->
+        <div class="field">
+          <span class="field-label">Maximum versions per document</span>
+          <select id="version-max-versions" class="field-control">
+            <option value="10">10 versions</option>
+            <option value="25">25 versions</option>
+            <option value="50">50 versions (recommended)</option>
+            <option value="100">100 versions</option>
+            <option value="200">200 versions</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Auto-cleanup</span>
+          <div class="field-toggle">
+            <input type="checkbox" id="version-auto-cleanup-enabled" />
+            <span>Automatically remove old versions</span>
+          </div>
+          <p class="field-helper">Keeps storage manageable by removing old versions while preserving important ones.</p>
+        </div>
+
+        <div class="field" id="auto-cleanup-options">
+          <span class="field-label">Cleanup strategy</span>
+          <select id="version-cleanup-strategy" class="field-control">
+            <option value="smart">Smart cleanup (recommended)</option>
+            <option value="count">Keep recent count</option>
+            <option value="age">Remove by age</option>
+          </select>
+          <p class="field-helper">Smart cleanup preserves milestones, tagged versions, and recent changes.</p>
+        </div>
+
+        <!-- UI Preferences -->
+        <div class="field">
+          <span class="field-label">Version display</span>
+          <div class="field-toggle">
+            <input type="checkbox" id="version-show-count" />
+            <span>Show version count in documents</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-toggle">
+            <input type="checkbox" id="version-show-last-modified" />
+            <span>Show last modified time</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-toggle">
+            <input type="checkbox" id="version-enable-shortcuts" />
+            <span>Enable keyboard shortcuts for version operations</span>
+          </div>
+        </div>
+
+        <!-- Advanced Features -->
+        <div class="field">
+          <span class="field-label">Advanced features</span>
+          <div class="field-toggle">
+            <input type="checkbox" id="version-enable-tagging" />
+            <span>Enable semantic tagging and auto-detection</span>
+          </div>
+          <p class="field-helper">Automatically tags versions with labels like "milestone", "draft", "review" based on content.</p>
+        </div>
+
+        <div class="field">
+          <div class="field-toggle">
+            <input type="checkbox" id="version-enable-compression" />
+            <span>Enable content compression</span>
+          </div>
+          <p class="field-helper">Reduces storage usage by compressing version content (recommended).</p>
+        </div>
+
+        <!-- Storage Impact Display -->
+        <div class="field">
+          <div id="storage-impact" class="storage-impact">
+            <h4>Storage Impact</h4>
+            <div class="impact-stats">
+              <div class="stat">
+                <span class="stat-label">Estimated size per document:</span>
+                <span id="size-per-document" class="stat-value">~1.5 MB</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">Recommended max documents:</span>
+                <span id="recommended-max-docs" class="stat-value">~65</span>
+              </div>
+              <div class="warnings" id="storage-warnings"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preset Profiles -->
+        <div class="field">
+          <span class="field-label">Quick presets</span>
+          <div class="preset-buttons">
+            <button type="button" id="preset-conservative" class="preset-btn">Conservative</button>
+            <button type="button" id="preset-power-user" class="preset-btn">Power User</button>
+            <button type="button" id="preset-minimal" class="preset-btn">Minimal</button>
+          </div>
+          <p class="field-helper">Quickly apply recommended settings for different usage patterns.</p>
+        </div>
+
+        <p id="version-status-message" class="status"></p>
+      </section>
     </div>
 
     <script type="module" src="/src/options/main.ts"></script>

@@ -154,3 +154,151 @@ code {
     color: #94a3b8;
   }
 }
+
+/* Version Management Specific Styles */
+#auto-save-options,
+#auto-save-mode-field,
+#auto-cleanup-options {
+  margin-left: 24px;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+#auto-save-options.enabled,
+#auto-save-mode-field.enabled,
+#auto-cleanup-options.enabled {
+  opacity: 1;
+}
+
+.storage-impact {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 8px;
+}
+
+.storage-impact h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.impact-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.stat-label {
+  color: #64748b;
+}
+
+.stat-value {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.warnings {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.warning-item {
+  color: #f59e0b;
+  margin-bottom: 4px;
+}
+
+.warning-item:before {
+  content: "⚠️ ";
+  margin-right: 4px;
+}
+
+.preset-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.preset-btn {
+  padding: 8px 16px;
+  border: 1px solid #cbd5f5;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preset-btn:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+}
+
+.preset-btn:active {
+  background: #cbd5f5;
+  border-color: #64748b;
+}
+
+.preset-btn.applied {
+  background: #dbeafe;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+}
+
+/* Conditional field visibility */
+.field[data-depends]:not(.visible) {
+  display: none;
+}
+
+.field[data-depends].visible {
+  display: flex;
+}
+
+/* Dark mode for version management */
+@media (prefers-color-scheme: dark) {
+  .storage-impact {
+    background: #0f172a;
+    border-color: rgba(148, 163, 184, 0.3);
+  }
+
+  .storage-impact h4 {
+    color: #f1f5f9;
+  }
+
+  .stat-value {
+    color: #f8fafc;
+  }
+
+  .preset-btn {
+    background: #1e293b;
+    border-color: rgba(148, 163, 184, 0.3);
+    color: #e2e8f0;
+  }
+
+  .preset-btn:hover {
+    background: #334155;
+    border-color: rgba(148, 163, 184, 0.5);
+  }
+
+  .preset-btn:active {
+    background: #475569;
+    border-color: rgba(148, 163, 184, 0.7);
+  }
+
+  .preset-btn.applied {
+    background: #1e3a8a;
+    border-color: #3b82f6;
+    color: #93c5fd;
+  }
+}

@@ -126,16 +126,20 @@ export function useDocumentState() {
     console.log('[useDocumentState] Starting save for document:', document.value.id, 'content length:', content.length)
     saving.value = true
     try {
+      const messageData = {
+        documentId: document.value.id,
+        content,
+        createdBy: 'user' as const
+      }
+      console.log('[useDocumentState] Sending message data:', messageData)
+
       const response = await chrome.runtime.sendMessage({
         type: 'SAVE_DOCUMENT_VERSION',
-        data: {
-          documentId: document.value.id,
-          content,
-          createdBy: 'user'
-        }
+        data: messageData
       })
 
       console.log('[useDocumentState] Raw response from background:', response)
+      console.log('[useDocumentState] Response type:', typeof response, 'Response keys:', response ? Object.keys(response) : 'null')
 
       if (isSuccessResponse(response)) {
         console.log('[useDocumentState] Save successful, processing response...')
@@ -169,7 +173,13 @@ export function useDocumentState() {
         console.log('[useDocumentState] Local state updated, versions count:', versions.value.length)
         return true
       } else {
-        console.error('[useDocumentState] Save failed - non-success response:', response)
+        console.error('[useDocumentState] Save failed - non-success response:', JSON.stringify(response, null, 2))
+        console.error('[useDocumentState] Response type:', response?.type)
+        console.error('[useDocumentState] Response error:', response?.error)
+
+        // Show user-friendly error message
+        const errorMessage = response?.error?.message || response?.error || 'Unknown error occurred while saving'
+        alert(`Failed to save document: ${errorMessage}`)
       }
     } catch (error) {
       console.error('Failed to save document:', error)

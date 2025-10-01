@@ -58,6 +58,82 @@ export class DocumentsUseCases {
     return version
   }
 
+  async deleteVersion(versionId: string): Promise<void> {
+    console.log('[DocumentsUseCases] Deleting version:', versionId)
+
+    // Get the version before deleting to find the document
+    const version = await this.documentVersionService.getById(versionId)
+    if (!version) {
+      throw new Error(`Version ${versionId} not found`)
+    }
+
+    await this.documentVersionService.delete(versionId)
+
+    // Notify about document update since version list changed
+    const document = await this.documentService.getById(version.documentId)
+    if (document) {
+      this.notifyDocumentUpdate(document)
+    }
+
+    console.log('[DocumentsUseCases] Version deleted successfully:', versionId)
+  }
+
+  async updateVersion(versionId: string, updates: { tags?: string[]; title?: string; metadata?: any }): Promise<DocumentVersionEntry> {
+    console.log('[DocumentsUseCases] Updating version:', versionId, updates)
+
+    const version = await this.documentVersionService.getById(versionId)
+    if (!version) {
+      throw new Error(`Version not found: ${versionId}`)
+    }
+
+    // Update the version with new metadata
+    const updatedVersion = await this.documentVersionService.update(versionId, updates)
+
+    // Notify about document update since version changed
+    const document = await this.documentService.getById(version.documentId)
+    if (document) {
+      this.notifyDocumentUpdate(document)
+    }
+
+    console.log('[DocumentsUseCases] Version updated successfully:', versionId)
+    return updatedVersion
+  }
+
+  async duplicateVersion(versionId: string, options?: { title?: string; tags?: string[] }): Promise<DocumentVersionEntry> {
+    console.log('[DocumentsUseCases] Duplicating version:', versionId)
+
+    const originalVersion = await this.documentVersionService.getById(versionId)
+    if (!originalVersion) {
+      throw new Error(`Version not found: ${versionId}`)
+    }
+
+    // Create a new version with the same content but updated metadata
+    const duplicateRequest: SaveDocumentVersionRequest = {
+      documentId: originalVersion.documentId,
+      content: originalVersion.content,
+      createdBy: 'user',
+      isAutoSaved: false,
+      isMilestone: false,
+      tags: options?.tags || originalVersion.tags
+    }
+
+    const newVersion = await this.documentVersionService.create(duplicateRequest)
+
+    // Update title if provided
+    if (options?.title) {
+      await this.documentVersionService.update(newVersion.id, { title: options.title })
+    }
+
+    // Notify about document update
+    const document = await this.documentService.getById(originalVersion.documentId)
+    if (document) {
+      this.notifyDocumentUpdate(document)
+    }
+
+    console.log('[DocumentsUseCases] Version duplicated successfully:', newVersion.id)
+    return newVersion
+  }
+
   async getDocument(
     documentId: string,
     options: { versionLimit?: number } = {}

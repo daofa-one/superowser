@@ -45,6 +45,34 @@ export interface DocumentVersionEntry {
     pageId?: string
     snippet?: string
   }>
+
+  // Version Management Extensions
+  alias?: string                    // User-friendly name (e.g., "Initial Draft", "Final Review")
+  tags: string[]                    // Semantic tags (e.g., ["milestone", "draft", "reviewed"])
+  contentHash: string               // SHA-256 hash for deduplication
+  size: number                      // Content size in bytes
+  changesSummary?: {                // Auto-generated change summary
+    linesAdded: number
+    linesRemoved: number
+    linesModified: number
+    significantChange: boolean      // Heuristic for major changes
+  }
+  metadata: {
+    isAutoSaved: boolean            // True if created by auto-save
+    isMilestone: boolean            // Marked as important milestone
+    isArchived: boolean             // Archived versions (hidden by default)
+    branchName?: string             // For version branching
+    mergeSourceIds?: string[]       // For merged versions
+    editingDuration?: number        // Time spent editing (ms)
+    characterCount: number          // Character count for quick reference
+    wordCount: number               // Word count for quick reference
+    version: string                 // Semantic version (e.g., "1.0.0", "1.1.2")
+    platform?: string               // Platform where version was created
+  }
+  settings?: {                      // Version-specific settings at creation time
+    autoSaveInterval?: number
+    compressionEnabled?: boolean
+  }
 }
 
 export type NoteCategory = 'note' | 'plan' | 'brainstorm' | 'highlight'
@@ -132,6 +160,14 @@ export interface SaveDocumentVersionRequest {
     pageId?: string
     snippet?: string
   }>
+
+  // Version Management Extensions
+  alias?: string
+  tags?: string[]
+  isAutoSaved?: boolean
+  isMilestone?: boolean
+  branchName?: string
+  editingDuration?: number
 }
 
 export interface SearchQuery {
@@ -140,4 +176,138 @@ export interface SearchQuery {
   tags?: string[]
   tasks?: string[]   // changed from single task to array
   limit?: number
+}
+
+export interface VersionManagementSettings {
+  autoSave: {
+    enabled: boolean
+    interval: number
+    mode: 'content_change' | 'time_based' | 'smart'
+    contentThreshold: number
+    smartTriggers: {
+      significantEdits: boolean
+      milestoneMarkers: boolean
+      beforeSave: boolean
+      periodically: boolean
+      beforeClose: boolean
+    }
+  }
+  storage: {
+    maxVersionsPerDocument: number
+    autoCleanup: {
+      enabled: boolean
+      strategy: 'count' | 'age' | 'smart'
+      keepCount: number
+      maxAgeHours: number
+      smartRetention: {
+        keepMilestones: boolean
+        keepBranches: boolean
+        keepTagged: boolean
+        keepRecent: number
+      }
+    }
+    compressionEnabled: boolean
+    deduplicationEnabled: boolean
+  }
+  ui: {
+    showVersionCount: boolean
+    showLastModified: boolean
+    defaultVersionView: 'list' | 'timeline' | 'tree'
+    enableQuickRestore: boolean
+    showDiffPreview: boolean
+    groupByDate: boolean
+    enableKeyboardShortcuts: boolean
+  }
+  advanced: {
+    enableVersionBranching: boolean
+    enableSemanticTags: boolean
+    autoTagging: {
+      enabled: boolean
+      detectMilestones: boolean
+      detectBreakingChanges: boolean
+      customPatterns: string[]
+    }
+    exportFormats: string[]
+    enableAuditTrail: boolean
+    enableCollaboration: boolean
+  }
+}
+
+export interface UserSettings {
+  defaultCloseAfterSave: boolean
+  maxSearchHistory: number
+  maxChatHistory: number
+  autoDetectSearchQueries: boolean
+  autoDetectChatMessages: boolean
+  preferredSearchEngine: string
+  preferredAiProvider: string
+  reuseAiTab: boolean
+  versionManagement: VersionManagementSettings
+}
+
+// Version Management Operations
+export interface VersionDiff {
+  added: string[]
+  removed: string[]
+  modified: Array<{
+    line: number
+    oldContent: string
+    newContent: string
+  }>
+  summary: {
+    linesAdded: number
+    linesRemoved: number
+    linesModified: number
+  }
+}
+
+export interface VersionComparisonResult {
+  sourceVersion: DocumentVersionEntry
+  targetVersion: DocumentVersionEntry
+  diff: VersionDiff
+  similarity: number  // 0-1 score
+  hasConflicts: boolean
+}
+
+export interface VersionBranchInfo {
+  branchName: string
+  baseVersionId: string
+  headVersionId: string
+  versions: DocumentVersionEntry[]
+  isActive: boolean
+  description?: string
+}
+
+export interface VersionPruneRequest {
+  documentId: string
+  strategy: 'count' | 'age' | 'smart' | 'manual'
+  options: {
+    keepCount?: number
+    maxAgeHours?: number
+    preserveMilestones?: boolean
+    preserveTagged?: boolean
+    preserveRecent?: number
+    specificVersionIds?: string[]
+  }
+}
+
+export interface VersionAnalytics {
+  documentId: string
+  totalVersions: number
+  storageUsed: number  // bytes
+  averageVersionSize: number
+  oldestVersion: Date
+  newestVersion: Date
+  autoSavedCount: number
+  milestoneCount: number
+  branchCount: number
+  uniqueContentVersions: number  // after deduplication
+  compressionRatio?: number
+}
+
+export interface VersionRestoreRequest {
+  documentId: string
+  versionId: string
+  createBackup: boolean
+  alias?: string
 }

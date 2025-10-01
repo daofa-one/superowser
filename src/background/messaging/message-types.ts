@@ -7,7 +7,8 @@ import {
   SavePageRequest,
   SaveNoteRequest,
   SearchResult,
-  SearchQuery
+  SearchQuery,
+  UserSettings
 } from '../../shared/models'
 
 // Base message structure
@@ -131,6 +132,11 @@ export interface UpdateUserSettingsMessage extends BaseMessage {
   }
 }
 
+export interface UpdateVersionManagementSettingsMessage extends BaseMessage {
+  type: 'UPDATE_VERSION_MANAGEMENT_SETTINGS'
+  data: Partial<UserSettings['versionManagement']>
+}
+
 export interface OpenPageMessage extends BaseMessage {
   type: 'OPEN_PAGE'
   data: { url: string; newTab?: boolean }
@@ -217,6 +223,7 @@ export type RequestMessage =
   | GetCommandSuggestionsMessage
   | GetUserSettingsMessage
   | UpdateUserSettingsMessage
+  | UpdateVersionManagementSettingsMessage
   | OpenPageMessage
   | GetSearchSuggestionsMessage
   | GetPopularTagsMessage

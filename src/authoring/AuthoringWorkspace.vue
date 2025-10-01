@@ -3,16 +3,26 @@
     <!-- Header -->
     <WorkspaceHeader
       :document="document"
-      :documentLoaded="documentLoaded"
-      :documentTitle="documentTitle"
+      :document-loaded="documentLoaded"
+      :document-title="documentTitle"
       :task="task"
       :saving="saving"
-      :showPreview="showPreview"
-      @togglePreview="handleTogglePreview"
-      @exportDocument="exportDocument"
-      @saveDocument="handleSaveDocument"
-      @toggleVersions="showVersions = !showVersions"
-      @updateTitle="handleUpdateTitle"
+      :show-preview="showPreview"
+      :current-version="currentVersion"
+      :versions="versions"
+      :has-unsaved-changes="hasUnsavedChanges"
+      :change-count="changeCount"
+      :is-auto-saving="isAutoSaving"
+      :auto-save-enabled="autoSaveSettings.enabled"
+      :auto-save-interval="autoSaveSettings.interval"
+      @toggle-preview="handleTogglePreview"
+      @export-document="exportDocument"
+      @save-document="handleSaveDocument"
+      @toggle-versions="showVersions = !showVersions"
+      @update-title="handleUpdateTitle"
+      @create-version="handleCreateVersion"
+      @show-version-settings="showVersionSettings = true"
+      @compare-versions="handleCompareVersions"
     />
 
     <!-- Main content area -->
@@ -34,8 +44,8 @@
         >
           <DocumentOutline
             :headings="outlineHeadings"
-            :activeHeading="activeHeading"
-            @headingClick="handleHeadingClick"
+            :active-heading="activeHeading"
+            @heading-click="handleHeadingClick"
           />
         </CollapsibleSection>
 
@@ -95,7 +105,7 @@
       <main class="editor-container" :class="{ 'drag-over': isDragOver }">
         <div class="editor-pane" :style="editorPaneStyle">
           <!-- Formatting toolbar -->
-          <FormattingToolbar @formatText="handleFormatText" />
+          <FormattingToolbar @format-text="handleFormatText" />
 
           <VueMonacoEditor
             ref="editorRef"
@@ -112,9 +122,9 @@
         <!-- Preview pane -->
         <MarkdownPreview
           v-if="showPreview"
-          v-model:previewContentRef="previewContentRef"
-          :renderedContent="renderedContent"
-          :previewPaneStyle="previewPaneStyle"
+          v-model:preview-content-ref="previewContentRef"
+          :rendered-content="renderedContent"
+          :preview-pane-style="previewPaneStyle"
           @close="handleTogglePreview"
           @scroll="handlePreviewScroll"
         />
@@ -122,25 +132,16 @@
 
       <!-- Version panel -->
       <aside v-if="showVersions" class="version-panel">
-        <div class="panel-header">
-          <h3>Version History</h3>
-          <button class="close-panel" @click="showVersions = false">×</button>
-        </div>
-        <div class="version-list">
-          <div
-            v-for="version in versions"
-            :key="version.id"
-            class="version-item"
-            :class="{ active: version.id === document?.activeVersionId }"
-            @click="loadVersion(version)"
-          >
-            <div class="version-meta">
-              <span class="version-date">{{ formatDate(version.createdAt) }}</span>
-              <span class="version-author">{{ version.createdBy }}</span>
-            </div>
-            <div v-if="version.summary" class="version-summary">{{ version.summary }}</div>
-          </div>
-        </div>
+        <VersionManager
+          :versions="versions"
+          :active-version-id="document?.activeVersionId"
+          :document-id="document?.id"
+          @close="showVersions = false"
+          @load-version="loadVersion"
+          @delete-version="handleDeleteVersion"
+          @duplicate-version="handleDuplicateVersion"
+          @create-version="handleCreateVersion"
+        />
       </aside>
     </div>
 
@@ -171,6 +172,7 @@ import FormattingToolbar from './components/FormattingToolbar.vue'
 import MarkdownPreview from './components/MarkdownPreview.vue'
 import DocumentOutline from './components/DocumentOutline.vue'
 import CollapsibleSection from './components/CollapsibleSection.vue'
+import VersionManager from './components/VersionManager.vue'
 
 // Composables
 import { useDocumentState } from './composables/useDocumentState'
@@ -224,7 +226,18 @@ const taskPages = ref<PageEntry[]>([])
 const taskNotes = ref<NoteEntry[]>([])
 const showSidebar = ref(true)
 const showVersions = ref(false)
+const showVersionSettings = ref(false)
 const isDragOver = ref(false)
+
+// Version management state
+const hasUnsavedChanges = ref(false)
+const changeCount = ref(0)
+const isAutoSaving = ref(false)
+const currentVersion = ref<any>(null)
+const autoSaveSettings = ref({
+  enabled: true,
+  interval: 300 // 5 minutes
+})
 
 // Monaco editor
 const editorRef = ref()
@@ -258,7 +271,6 @@ const editorOptions = computed(() => ({
   parameterHints: { enabled: false },
   codeLens: false,
   colorDecorators: false,
-  lightbulb: { enabled: false },
   hover: { enabled: false },
   links: false,
   folding: false,
@@ -380,6 +392,10 @@ function handleEditorMount(editorInstance: any) {
 }
 
 function handleContentChange() {
+  // Track changes for version management
+  hasUnsavedChanges.value = true
+  changeCount.value += 1
+
   // Auto-save after changes (debounced)
   debouncedSave()
   // Update preview (debounced)
@@ -460,6 +476,10 @@ async function handleSaveDocument() {
   try {
     const result = await saveDocumentVersion(documentContent.value)
     console.log('[AuthoringWorkspace] Save result:', result)
+
+    // Reset change tracking after successful save
+    hasUnsavedChanges.value = false
+    changeCount.value = 0
   } catch (error) {
     console.error('[AuthoringWorkspace] Save failed:', error)
   }
@@ -546,6 +566,79 @@ async function loadVersion(version: any) {
   if (content) {
     documentContent.value = content
   }
+}
+
+async function handleCreateVersion() {
+  try {
+    await saveDocumentVersion(documentContent.value)
+    hasUnsavedChanges.value = false
+    changeCount.value = 0
+  } catch (error) {
+    console.error('Failed to create version:', error)
+  }
+}
+
+async function handleDeleteVersion(version: any) {
+  try {
+    console.log(`[AuthoringWorkspace] Deleting version: ${version.id}`)
+
+    const response = await window.chrome.runtime.sendMessage({
+      type: 'DELETE_DOCUMENT_VERSION',
+      data: { versionId: version.id }
+    })
+
+    if (response?.type === 'SUCCESS') {
+      console.log(`[AuthoringWorkspace] Version deleted successfully: ${version.id}`)
+      // Reload versions after deletion to update the UI
+      await loadDocument()
+    } else {
+      throw new Error(response?.error || 'Delete operation failed')
+    }
+  } catch (error) {
+    console.error('[AuthoringWorkspace] Failed to delete version:', error)
+    // Show user-friendly error message
+    alert(`Failed to delete version: ${(error as Error)?.message || 'Unknown error'}`)
+  }
+}
+
+async function handleDuplicateVersion(version: any) {
+  try {
+    console.log(`[AuthoringWorkspace] Duplicating version: ${version.id}`)
+
+    const response = await window.chrome.runtime.sendMessage({
+      type: 'DUPLICATE_DOCUMENT_VERSION',
+      data: {
+        versionId: version.id,
+        options: {
+          title: `Copy of ${version.title || 'Version'}`,
+          tags: version.tags
+        }
+      }
+    })
+
+    if (response?.type === 'SUCCESS') {
+      console.log(`[AuthoringWorkspace] Version duplicated successfully:`, response.data)
+      // Reload versions after duplication to show the new version
+      await loadDocument()
+
+      // Optionally switch to the new version
+      if (response.data?.id) {
+        // Load the duplicated version content
+        await loadVersion(response.data)
+      }
+    } else {
+      throw new Error(response?.error || 'Duplicate operation failed')
+    }
+  } catch (error) {
+    console.error('[AuthoringWorkspace] Failed to duplicate version:', error)
+    // Show user-friendly error message
+    alert(`Failed to duplicate version: ${(error as Error)?.message || 'Unknown error'}`)
+  }
+}
+
+function handleCompareVersions() {
+  // Implementation would open comparison view
+  console.log('Compare versions')
 }
 
 // Auto-save
@@ -694,10 +787,6 @@ function insertCitation(dragData: { type: 'page' | 'note', item: PageEntry | Not
   }
 }
 
-function formatDate(date: Date | string): string {
-  const d = new Date(date)
-  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString()
-}
 
 
 function handleToggleOutline() {

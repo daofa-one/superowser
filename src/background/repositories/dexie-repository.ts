@@ -131,6 +131,79 @@ db.version(6).stores({
   })
 })
 
+// Version 7: Extended version management schema
+db.version(7).stores({
+  pages: '++id, url, title, *tags, shortcut, *tasks, createdAt, updatedAt',
+  notes: '++id, pageId, content, category, *tasks, createdAt, updatedAt',
+  tasks: '++id, name, isActive, createdAt, updatedAt',
+  settings: '++key',
+  documents: '++id, taskId, status, activeVersionId, createdAt, updatedAt',
+  documentVersions: '++id, documentId, parentVersionId, createdAt, alias, *tags, contentHash, size'
+}).upgrade(async trans => {
+  console.log('[Dexie] Starting version 7 migration...')
+
+  try {
+    // Use static imports instead of dynamic imports to avoid service worker issues
+
+    await trans.documentVersions.toCollection().modify(async version => {
+      // Migrate existing versions to new schema
+      if (!version.tags) {
+        version.tags = []
+      }
+
+      if (!version.contentHash) {
+        try {
+          version.contentHash = await generateContentHash(version.content || '')
+        } catch (hashError) {
+          console.warn('[Dexie] Failed to generate content hash for version:', version.id, hashError)
+          version.contentHash = 'fallback-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9)
+        }
+      }
+
+      if (!version.size) {
+        try {
+          const stats = calculateContentStats(version.content || '')
+          version.size = stats.size
+        } catch (statsError) {
+          console.warn('[Dexie] Failed to calculate stats for version:', version.id, statsError)
+          // Fallback size calculation for service worker context
+          const content = version.content || ''
+          try {
+            version.size = new TextEncoder().encode(content).length
+          } catch {
+            version.size = content.length
+          }
+        }
+      }
+
+      if (!version.metadata) {
+        try {
+          version.metadata = createVersionMetadata(version.content || '', {
+            isAutoSaved: false,
+            isMilestone: false
+          })
+        } catch (metadataError) {
+          console.warn('[Dexie] Failed to create metadata for version:', version.id, metadataError)
+          version.metadata = {
+            isAutoSaved: false,
+            isMilestone: false,
+            isArchived: false,
+            characterCount: (version.content || '').length,
+            wordCount: (version.content || '').split(/\s+/).filter(w => w.length > 0).length,
+            version: '1.0.0',
+            platform: 'web'
+          }
+        }
+      }
+    })
+
+    console.log('[Dexie] Version 7 migration completed successfully')
+  } catch (migrationError) {
+    console.error('[Dexie] Version 7 migration failed:', migrationError)
+    // Don't throw to prevent breaking the app
+  }
+})
+
 // Utility functions
 const generateId = () => crypto.randomUUID()
 const now = () => new Date()
@@ -444,24 +517,95 @@ export class DexieDocumentService implements IDocumentService {
   }
 }
 
+// Import version utilities at module level to avoid service worker issues
+import {
+  generateContentHash,
+  calculateContentStats,
+  createVersionMetadata,
+  generateSemanticVersion,
+  generateAutoTags,
+  detectSignificantChange,
+  calculateSimpleDiff,
+  generateVersionAnalytics
+} from '../../shared/utils/version-utils'
+
 export class DexieDocumentVersionService implements IDocumentVersionService {
   async create(request: SaveDocumentVersionRequest): Promise<DocumentVersionEntry> {
     console.log('[DexieDocumentVersionService] Creating version for document:', request.documentId, 'content length:', request.content?.length || 0)
 
     const nowDate = now()
+    const content = request.content || ''
+
+    // Get existing versions for context
+    const existingVersions = await this.getByDocument(request.documentId)
+    const previousVersion = existingVersions[0] // Most recent version
+
+    // Generate content hash and stats
+    const contentHash = await generateContentHash(content)
+    const stats = calculateContentStats(content)
+
+    // Generate version metadata
+    const metadata = createVersionMetadata(content, {
+      isAutoSaved: request.isAutoSaved || false,
+      isMilestone: request.isMilestone || false,
+      branchName: request.branchName,
+      editingDuration: request.editingDuration,
+      platform: 'web'
+    })
+
+    // Generate semantic version
+    const semanticVersion = generateSemanticVersion(
+      existingVersions,
+      request.isMilestone, // Major version for milestones
+      detectSignificantChange(previousVersion?.content || '', content) // Minor for significant changes
+    )
+
+    // Generate auto-tags
+    const autoTags = generateAutoTags(content, previousVersion, [])
+    const allTags = [...new Set([...(request.tags || []), ...autoTags])]
+
+    // Calculate changes summary
+    let changesSummary
+    if (previousVersion) {
+      const diff = calculateSimpleDiff(
+        previousVersion.content.split('\n'),
+        content.split('\n')
+      )
+      changesSummary = {
+        ...diff,
+        significantChange: detectSignificantChange(previousVersion.content, content)
+      }
+    }
+
     const version: DocumentVersionEntry = {
       id: generateId(),
       documentId: request.documentId,
       parentVersionId: request.parentVersionId,
       title: request.title,
       summary: request.summary,
-      content: request.content,
+      content,
       createdAt: nowDate,
       createdBy: request.createdBy ?? 'user',
-      sources: request.sources
+      sources: request.sources,
+
+      // Extended version management fields
+      alias: request.alias,
+      tags: allTags,
+      contentHash,
+      size: stats.size,
+      changesSummary,
+      metadata: {
+        ...metadata,
+        version: semanticVersion,
+        characterCount: stats.characterCount,
+        wordCount: stats.wordCount
+      },
+      settings: {
+        compressionEnabled: true // Default to enabled for new versions
+      }
     }
 
-    console.log('[DexieDocumentVersionService] Generated version:', version.id)
+    console.log('[DexieDocumentVersionService] Generated version:', version.id, 'with tags:', allTags, 'version:', semanticVersion)
 
     try {
       await db.documentVersions.add(version)
@@ -477,6 +621,32 @@ export class DexieDocumentVersionService implements IDocumentVersionService {
     } catch (error) {
       console.error('[DexieDocumentVersionService] Failed to create version:', error)
       throw error
+    }
+  }
+
+  async update(id: string, updates: Partial<DocumentVersionEntry>): Promise<DocumentVersionEntry> {
+    console.log('[DexieDocumentVersionService] Updating version:', id, updates)
+
+    const existing = await db.documentVersions.get(id)
+    if (!existing) {
+      throw new Error(`Version not found: ${id}`)
+    }
+
+    // Merge updates with existing version
+    const updatedVersion = {
+      ...existing,
+      ...updates,
+      id, // Ensure ID doesn't change
+      updatedAt: now()
+    }
+
+    await db.documentVersions.put(updatedVersion)
+
+    console.log('[DexieDocumentVersionService] Version updated successfully:', id)
+    return {
+      ...updatedVersion,
+      createdAt: updatedVersion.createdAt instanceof Date ? updatedVersion.createdAt : new Date(updatedVersion.createdAt),
+      updatedAt: updatedVersion.updatedAt instanceof Date ? updatedVersion.updatedAt : new Date(updatedVersion.updatedAt)
     }
   }
 
@@ -518,6 +688,152 @@ export class DexieDocumentVersionService implements IDocumentVersionService {
 
   async delete(id: string): Promise<void> {
     await db.documentVersions.delete(id)
+  }
+
+  // Extended Version Management Methods
+
+  async updateAlias(versionId: string, alias: string): Promise<void> {
+    await db.documentVersions.update(versionId, { alias })
+  }
+
+  async updateTags(versionId: string, tags: string[]): Promise<void> {
+    await db.documentVersions.update(versionId, { tags })
+  }
+
+  async setMilestone(versionId: string, isMilestone: boolean): Promise<void> {
+    const version = await db.documentVersions.get(versionId)
+    if (version) {
+      const updatedMetadata = {
+        ...version.metadata,
+        isMilestone
+      }
+      await db.documentVersions.update(versionId, { metadata: updatedMetadata })
+    }
+  }
+
+  async archiveVersion(versionId: string): Promise<void> {
+    const version = await db.documentVersions.get(versionId)
+    if (version) {
+      const updatedMetadata = {
+        ...version.metadata,
+        isArchived: true
+      }
+      await db.documentVersions.update(versionId, { metadata: updatedMetadata })
+    }
+  }
+
+  async getVersionsByTag(documentId: string, tag: string): Promise<DocumentVersionEntry[]> {
+    const versions = await db.documentVersions
+      .where('documentId')
+      .equals(documentId)
+      .and(version => version.tags?.includes(tag))
+      .toArray()
+
+    return versions
+      .map(version => ({
+        ...version,
+        createdAt: version.createdAt instanceof Date ? version.createdAt : new Date(version.createdAt)
+      }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }
+
+  async getMilestoneVersions(documentId: string): Promise<DocumentVersionEntry[]> {
+    const versions = await db.documentVersions
+      .where('documentId')
+      .equals(documentId)
+      .and(version => version.metadata?.isMilestone === true)
+      .toArray()
+
+    return versions
+      .map(version => ({
+        ...version,
+        createdAt: version.createdAt instanceof Date ? version.createdAt : new Date(version.createdAt)
+      }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }
+
+  async getVersionAnalytics(documentId: string): Promise<any> {
+    // Use static import (now at top of file) instead of dynamic import to avoid service worker issues
+    const versions = await this.getByDocument(documentId)
+    return generateVersionAnalytics(versions)
+  }
+
+  async findDuplicateVersions(documentId: string): Promise<Array<{ hash: string; versions: DocumentVersionEntry[] }>> {
+    const versions = await this.getByDocument(documentId)
+    const hashGroups: { [hash: string]: DocumentVersionEntry[] } = {}
+
+    for (const version of versions) {
+      if (!hashGroups[version.contentHash]) {
+        hashGroups[version.contentHash] = []
+      }
+      hashGroups[version.contentHash].push(version)
+    }
+
+    return Object.entries(hashGroups)
+      .filter(([, versions]) => versions.length > 1)
+      .map(([hash, versions]) => ({ hash, versions }))
+  }
+
+  async pruneVersions(request: any): Promise<{ deletedCount: number; preservedCount: number }> {
+    const { documentId, strategy, options } = request
+    const allVersions = await this.getByDocument(documentId)
+
+    let versionsToDelete: string[] = []
+
+    switch (strategy) {
+      case 'count':
+        if (options.keepCount && allVersions.length > options.keepCount) {
+          const sortedVersions = allVersions.sort((a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )
+          versionsToDelete = sortedVersions
+            .slice(options.keepCount)
+            .map(v => v.id)
+        }
+        break
+
+      case 'age':
+        if (options.maxAgeHours) {
+          const cutoffTime = new Date(Date.now() - options.maxAgeHours * 60 * 60 * 1000)
+          versionsToDelete = allVersions
+            .filter(v => v.createdAt < cutoffTime)
+            .map(v => v.id)
+        }
+        break
+
+      case 'smart':
+        const preserveMilestones = options.preserveMilestones !== false
+        const preserveTagged = options.preserveTagged !== false
+        const preserveRecent = options.preserveRecent || 5
+
+        const sortedVersions = allVersions.sort((a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )
+
+        versionsToDelete = sortedVersions
+          .slice(preserveRecent) // Keep recent versions
+          .filter(v => {
+            if (preserveMilestones && v.metadata?.isMilestone) return false
+            if (preserveTagged && v.tags?.length > 0) return false
+            return true
+          })
+          .map(v => v.id)
+        break
+
+      case 'manual':
+        versionsToDelete = options.specificVersionIds || []
+        break
+    }
+
+    // Delete the selected versions
+    for (const versionId of versionsToDelete) {
+      await db.documentVersions.delete(versionId)
+    }
+
+    return {
+      deletedCount: versionsToDelete.length,
+      preservedCount: allVersions.length - versionsToDelete.length
+    }
   }
 }
 

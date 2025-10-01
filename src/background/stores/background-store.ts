@@ -1,7 +1,7 @@
 // Background store - Master state management using Strategy A
 
 import { defineStore } from 'pinia'
-import { PageEntry, TaskEntry } from '../../shared/models'
+import { PageEntry, TaskEntry, UserSettings } from '../../shared/models'
 
 export interface BrowserSearchQuery {
   id: string
@@ -82,16 +82,7 @@ export interface UserContextState {
   } | null
 
   // User preferences
-  settings: {
-    defaultCloseAfterSave: boolean
-    maxSearchHistory: number
-    maxChatHistory: number
-    autoDetectSearchQueries: boolean
-    autoDetectChatMessages: boolean
-    preferredSearchEngine: string
-    preferredAiProvider: string
-    reuseAiTab: boolean
-  }
+  settings: UserSettings
 
   // Analytics/insights
   stats: {
@@ -146,7 +137,61 @@ export const useBackgroundStore = defineStore('background', {
         autoDetectChatMessages: true,
         preferredSearchEngine: 'google',
         preferredAiProvider: 'chatgpt',
-        reuseAiTab: true
+        reuseAiTab: true,
+        versionManagement: {
+          autoSave: {
+            enabled: true,
+            interval: 300000, // 5 minutes
+            mode: 'smart',
+            contentThreshold: 100,
+            smartTriggers: {
+              significantEdits: true,
+              milestoneMarkers: true,
+              beforeSave: true,
+              periodically: true,
+              beforeClose: true
+            }
+          },
+          storage: {
+            maxVersionsPerDocument: 50,
+            autoCleanup: {
+              enabled: true,
+              strategy: 'smart',
+              keepCount: 20,
+              maxAgeHours: 2160, // 90 days
+              smartRetention: {
+                keepMilestones: true,
+                keepBranches: true,
+                keepTagged: true,
+                keepRecent: 10
+              }
+            },
+            compressionEnabled: true,
+            deduplicationEnabled: true
+          },
+          ui: {
+            showVersionCount: true,
+            showLastModified: true,
+            defaultVersionView: 'list',
+            enableQuickRestore: true,
+            showDiffPreview: true,
+            groupByDate: false,
+            enableKeyboardShortcuts: true
+          },
+          advanced: {
+            enableVersionBranching: false,
+            enableSemanticTags: true,
+            autoTagging: {
+              enabled: true,
+              detectMilestones: true,
+              detectBreakingChanges: false,
+              customPatterns: []
+            },
+            exportFormats: ['json', 'markdown'],
+            enableAuditTrail: true,
+            enableCollaboration: false
+          }
+        }
       },
 
       stats: {
@@ -222,24 +267,215 @@ export const useBackgroundStore = defineStore('background', {
   actions: {
     async loadSettingsFromStorage() {
       try {
+        console.log('[Background Store] Loading settings from storage...')
         const result = await chrome.storage.local.get(['userSettings'])
         const stored = result?.userSettings
+
         if (stored && typeof stored === 'object') {
-          this.user.settings = {
-            ...this.user.settings,
-            ...stored
+          console.log('[Background Store] Found stored settings, merging with defaults...')
+
+          // Safely merge version management settings
+          let versionManagementSettings = this.user.settings.versionManagement
+          try {
+            if (stored.versionManagement && typeof stored.versionManagement === 'object') {
+              versionManagementSettings = {
+                ...this.user.settings.versionManagement,
+                autoSave: {
+                  ...this.user.settings.versionManagement.autoSave,
+                  ...(stored.versionManagement.autoSave || {})
+                },
+                storage: {
+                  ...this.user.settings.versionManagement.storage,
+                  ...(stored.versionManagement.storage || {})
+                },
+                ui: {
+                  ...this.user.settings.versionManagement.ui,
+                  ...(stored.versionManagement.ui || {})
+                },
+                advanced: {
+                  ...this.user.settings.versionManagement.advanced,
+                  ...(stored.versionManagement.advanced || {})
+                }
+              }
+            }
+          } catch (vmError) {
+            console.warn('[Background Store] Error merging version management settings, using defaults:', vmError)
           }
 
+          // Merge with defaults
+          this.user.settings = {
+            ...this.user.settings,
+            ...stored,
+            versionManagement: versionManagementSettings
+          }
+
+          // Legacy migrations
           if (!this.user.settings.preferredAiProvider) {
             this.user.settings.preferredAiProvider = 'chatgpt'
           }
           if (typeof this.user.settings.reuseAiTab !== 'boolean') {
             this.user.settings.reuseAiTab = true
           }
+
+          // Initialize version management settings if needed
+          if (!stored.versionManagement) {
+            console.log('[Background Store] Initializing version management settings with defaults')
+            try {
+              await this.saveSettingsToStorage()
+            } catch (saveError) {
+              console.warn('[Background Store] Failed to save initial version management settings:', saveError)
+            }
+          }
+
           this.broadcastStateUpdate('user.settings', this.user.settings)
+        } else {
+          console.log('[Background Store] No stored settings found, using defaults')
         }
       } catch (error) {
-        console.warn('[Background Store] Failed to load user settings from storage:', error)
+        console.error('[Background Store] Failed to load user settings from storage:', error)
+        throw error // Re-throw to help identify initialization issues
+      }
+    },
+
+    async saveSettingsToStorage() {
+      try {
+        await chrome.storage.local.set({ userSettings: this.user.settings })
+        console.log('[Background Store] Settings saved to storage')
+      } catch (error) {
+        console.warn('[Background Store] Failed to save settings to storage:', error)
+      }
+    },
+
+    async updateVersionManagementSettings(updates: Partial<UserSettings['versionManagement']>) {
+      // Validate and merge the updates
+      const validatedUpdates = this.validateVersionManagementUpdates(updates)
+
+      this.user.settings.versionManagement = {
+        ...this.user.settings.versionManagement,
+        ...validatedUpdates
+      }
+      await this.saveSettingsToStorage()
+      this.broadcastStateUpdate('user.settings', this.user.settings)
+    },
+
+    validateVersionManagementUpdates(updates: Partial<UserSettings['versionManagement']>): Partial<UserSettings['versionManagement']> {
+      const validated: Partial<UserSettings['versionManagement']> = {}
+
+      if (updates.autoSave) {
+        validated.autoSave = {
+          ...this.user.settings.versionManagement.autoSave,
+          ...updates.autoSave
+        }
+
+        // Validate interval (min 30 seconds, max 1 hour)
+        if (validated.autoSave.interval !== undefined) {
+          validated.autoSave.interval = Math.max(30000, Math.min(3600000, validated.autoSave.interval))
+        }
+
+        // Validate content threshold (min 10 chars, max 10000)
+        if (validated.autoSave.contentThreshold !== undefined) {
+          validated.autoSave.contentThreshold = Math.max(10, Math.min(10000, validated.autoSave.contentThreshold))
+        }
+      }
+
+      if (updates.storage) {
+        validated.storage = {
+          ...this.user.settings.versionManagement.storage,
+          ...updates.storage
+        }
+
+        // Validate max versions (min 5, max 1000)
+        if (validated.storage.maxVersionsPerDocument !== undefined) {
+          validated.storage.maxVersionsPerDocument = Math.max(5, Math.min(1000, validated.storage.maxVersionsPerDocument))
+        }
+
+        if (validated.storage.autoCleanup) {
+          // Validate keep count (min 3, max 100)
+          if (validated.storage.autoCleanup.keepCount !== undefined) {
+            validated.storage.autoCleanup.keepCount = Math.max(3, Math.min(100, validated.storage.autoCleanup.keepCount))
+          }
+
+          // Validate max age (min 24 hours, max 1 year)
+          if (validated.storage.autoCleanup.maxAgeHours !== undefined) {
+            validated.storage.autoCleanup.maxAgeHours = Math.max(24, Math.min(8760, validated.storage.autoCleanup.maxAgeHours))
+          }
+
+          if (validated.storage.autoCleanup.smartRetention?.keepRecent !== undefined) {
+            validated.storage.autoCleanup.smartRetention.keepRecent = Math.max(1, Math.min(20, validated.storage.autoCleanup.smartRetention.keepRecent))
+          }
+        }
+      }
+
+      if (updates.ui) {
+        validated.ui = {
+          ...this.user.settings.versionManagement.ui,
+          ...updates.ui
+        }
+      }
+
+      if (updates.advanced) {
+        validated.advanced = {
+          ...this.user.settings.versionManagement.advanced,
+          ...updates.advanced
+        }
+
+        if (validated.advanced.autoTagging?.customPatterns) {
+          // Limit to 20 patterns, each max 100 chars
+          validated.advanced.autoTagging.customPatterns = validated.advanced.autoTagging.customPatterns
+            .slice(0, 20)
+            .map(pattern => pattern.substring(0, 100))
+            .filter(pattern => pattern.trim().length > 0)
+        }
+
+        if (validated.advanced.exportFormats) {
+          // Only allow known formats
+          const allowedFormats = ['json', 'markdown', 'txt', 'html', 'pdf']
+          validated.advanced.exportFormats = validated.advanced.exportFormats.filter(
+            format => allowedFormats.includes(format)
+          )
+        }
+      }
+
+      return validated
+    },
+
+    calculateStorageImpact(settings: UserSettings['versionManagement']): {
+      estimatedSizePerDocument: number
+      recommendedMaxDocuments: number
+      estimatedTotalSize: number
+      warnings: string[]
+    } {
+      const warnings: string[] = []
+      const avgDocumentSize = 50000 // 50KB average
+      const compressionRatio = settings.storage.compressionEnabled ? 0.6 : 1.0
+      const versionOverhead = 2000 // 2KB metadata per version
+
+      const estimatedSizePerDocument = (
+        (avgDocumentSize * compressionRatio + versionOverhead) *
+        settings.storage.maxVersionsPerDocument
+      )
+
+      const availableStorage = 100 * 1024 * 1024 // 100MB typical extension storage
+      const recommendedMaxDocuments = Math.floor(availableStorage * 0.8 / estimatedSizePerDocument)
+      const estimatedTotalSize = estimatedSizePerDocument * recommendedMaxDocuments
+
+      if (settings.storage.maxVersionsPerDocument > 100) {
+        warnings.push('High version count may impact performance')
+      }
+
+      if (!settings.storage.autoCleanup.enabled) {
+        warnings.push('Manual cleanup required to prevent storage overflow')
+      }
+
+      if (settings.autoSave.enabled && settings.autoSave.interval < 60000) {
+        warnings.push('Frequent auto-save may create many versions')
+      }
+
+      return {
+        estimatedSizePerDocument,
+        recommendedMaxDocuments,
+        estimatedTotalSize,
+        warnings
       }
     },
 

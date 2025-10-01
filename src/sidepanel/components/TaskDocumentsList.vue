@@ -126,8 +126,8 @@ const createNewDocument = async () => {
       <button
         v-if="currentTask"
         class="btn-new-document"
-        @click="createNewDocument"
         title="Create new document for this task"
+        @click="createNewDocument"
       >
         <svg viewBox="0 0 24 24" class="new-doc-icon">
           <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" fill="currentColor"/>

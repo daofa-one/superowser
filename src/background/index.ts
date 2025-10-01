@@ -11,6 +11,27 @@ import { useBackgroundStore } from './stores/background-store'
 import { createPinia, setActivePinia } from 'pinia'
 import { escapeForXML } from '../shared/utils'
 import { formatCommandResponseForChat } from '../shared/commands/formatters'
+
+// Default version management settings
+function getDefaultVersionSettings() {
+  return {
+    autoSave: {
+      enabled: true,
+      interval: 300, // 5 minutes
+      minChanges: 50
+    },
+    cleanup: {
+      enabled: false,
+      keepVersions: 25
+    },
+    ui: {
+      versionNaming: 'timestamp',
+      showMetadata: true,
+      compareMode: 'sideBySide'
+    }
+  }
+}
+
 // Initialize dependency injection container and shared store
 const container = DIContainer.getInstance()
 const pinia = createPinia()
@@ -949,6 +970,16 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
             case 'SAVE_DOCUMENT_VERSION':
                 data = await container.documentsUseCases.createVersion(message.data);
                 break;
+            case 'DELETE_DOCUMENT_VERSION':
+                await container.documentsUseCases.deleteVersion(message.data.versionId);
+                data = { success: true };
+                break;
+            case 'UPDATE_DOCUMENT_VERSION':
+                data = await container.documentsUseCases.updateVersion(message.data.versionId, message.data.updates);
+                break;
+            case 'DUPLICATE_DOCUMENT_VERSION':
+                data = await container.documentsUseCases.duplicateVersion(message.data.versionId, message.data.options);
+                break;
             case 'GET_TASK_DOCUMENTS':
                 data = await container.documentsUseCases.listDocumentsByTask(message.data.taskId);
                 break;
@@ -1061,6 +1092,11 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 if (typeof message.data?.reuseAiTab === 'boolean') {
                     await backgroundStore.setAiTabReusePreference(message.data.reuseAiTab);
                 }
+                data = backgroundStore.user.settings;
+                break;
+
+            case 'UPDATE_VERSION_MANAGEMENT_SETTINGS':
+                await backgroundStore.updateVersionManagementSettings(message.data);
                 data = backgroundStore.user.settings;
                 break;
 

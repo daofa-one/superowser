@@ -2,13 +2,13 @@
   <div class="preview-pane" :style="previewPaneStyle">
     <div class="preview-header">
       <h3>Preview</h3>
-      <button class="close-preview" @click="$emit('close')" title="Close preview">×</button>
+      <button class="close-preview" title="Close preview" @click="$emit('close')">×</button>
     </div>
     <div
       ref="previewContentRef"
       class="preview-content"
-      v-html="renderedContent"
       @scroll="handlePreviewScroll"
+      v-html="renderedContent"
     ></div>
   </div>
 </template>
