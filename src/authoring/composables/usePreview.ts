@@ -1,6 +1,7 @@
 import { ref, computed, nextTick } from 'vue'
 import MarkdownIt from 'markdown-it'
 import anchor from 'markdown-it-anchor'
+import mermaid from 'mermaid'
 
 export function usePreview() {
   // State
@@ -9,7 +10,7 @@ export function usePreview() {
   const renderedContent = ref('')
   const isScrollSyncing = ref(false)
   const mermaidLoaded = ref(false)
-  let mermaidInstance: any = null
+  const mermaidInstance = mermaid
   let previewScrollListener: ((ratio: number) => void) | null = null
   let previewSyncTimeout: number | null = null
 
@@ -38,15 +39,9 @@ export function usePreview() {
   }))
 
   // Mermaid functions
-  async function loadMermaid() {
+  function ensureMermaidInitialized() {
     if (mermaidLoaded.value) return
-
     try {
-      // Dynamic import for lazy loading
-      const mermaid = await import('mermaid')
-      mermaidInstance = mermaid.default
-
-      // Configure Mermaid
       mermaidInstance.initialize({
         startOnLoad: false,
         theme: 'default',
@@ -54,15 +49,18 @@ export function usePreview() {
         fontFamily: 'arial',
         fontSize: 14
       })
-
       mermaidLoaded.value = true
     } catch (error) {
-      console.error('Failed to load Mermaid:', error)
+      console.error('Failed to initialise Mermaid:', error)
     }
   }
 
   async function renderMermaidDiagrams(htmlContent: string, markdownContent: string): Promise<string> {
-    if (!mermaidInstance) return htmlContent
+    ensureMermaidInitialized()
+
+    if (!mermaidLoaded.value) {
+      return htmlContent
+    }
 
     // Find all mermaid code blocks in the markdown
     const mermaidRegex = /```mermaid\n([\s\S]*?)\n```/g
@@ -82,7 +80,7 @@ export function usePreview() {
             Loading diagram...
           </div>
           <div class="mermaid-controls">
-            <button class="mermaid-export-btn" onclick="exportMermaidDiagram('${diagramId}')" title="Export as SVG">
+            <button class="mermaid-export-btn" type="button" data-diagram-id="${diagramId}" title="Export as SVG">
               📥 Export SVG
             </button>
           </div>
@@ -111,6 +109,22 @@ export function usePreview() {
         element.innerHTML = '<p style="color: red;">Error rendering diagram</p>'
       }
     })
+
+    // Attach export handlers without inline events
+    const exportButtons = Array.from(previewContentRef.value.querySelectorAll<HTMLButtonElement>('.mermaid-export-btn'))
+
+    exportButtons.forEach(button => {
+      const clone = button.cloneNode(true) as HTMLButtonElement
+      button.replaceWith(clone)
+    })
+
+    const refreshedButtons = previewContentRef.value.querySelectorAll<HTMLButtonElement>('.mermaid-export-btn')
+    refreshedButtons.forEach(button => {
+      const diagramId = button.dataset.diagramId
+      if (!diagramId) return
+
+      button.addEventListener('click', () => exportDiagram(diagramId))
+    })
   }
 
   // Preview functionality
@@ -127,21 +141,20 @@ export function usePreview() {
       let htmlContent = md.render(content || '')
 
       // Check if there are Mermaid diagrams and load library if needed
-      const hasMermaid = /```mermaid\n([\s\S]*?)\n```/g.test(content)
+    const hasMermaid = /```mermaid\n([\s\S]*?)\n```/g.test(content)
 
-      if (hasMermaid) {
-        await loadMermaid()
-        htmlContent = await renderMermaidDiagrams(htmlContent, content)
-      }
+    if (hasMermaid) {
+      htmlContent = await renderMermaidDiagrams(htmlContent, content)
+    }
 
-      renderedContent.value = htmlContent
+    renderedContent.value = htmlContent
 
-      // Render Mermaid diagrams after content is updated
-      if (hasMermaid && mermaidInstance) {
-        nextTick(() => {
-          renderMermaidInDOM()
-        })
-      }
+    // Render Mermaid diagrams after content is updated
+    if (hasMermaid && mermaidLoaded.value) {
+      nextTick(() => {
+        renderMermaidInDOM()
+      })
+    }
     } catch (error) {
       console.error('Failed to render markdown:', error)
       renderedContent.value = '<p>Error rendering markdown</p>'
@@ -198,7 +211,7 @@ export function usePreview() {
   }
 
   // Global function for export (accessible from HTML)
-  ;(window as any).exportMermaidDiagram = function(diagramId: string) {
+  function exportDiagram(diagramId: string) {
     const element = document.getElementById(diagramId)
     if (!element) return
 
@@ -217,6 +230,8 @@ export function usePreview() {
     document.body.removeChild(downloadLink)
     URL.revokeObjectURL(svgUrl)
   }
+
+  ;(window as any).exportMermaidDiagram = exportDiagram
 
   return {
     // State

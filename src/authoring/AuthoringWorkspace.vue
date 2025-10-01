@@ -72,6 +72,12 @@
               <div class="reference-content">
                 <div class="reference-title">{{ page.title }}</div>
                 <div class="reference-url">{{ page.url }}</div>
+                <div v-if="notesByPage[page.id]?.length" class="reference-notes">
+                  <span class="note-count">{{ notesByPage[page.id].length }} note{{ notesByPage[page.id].length === 1 ? '' : 's' }}</span>
+                  <span class="note-preview">
+                    “{{ notesByPage[page.id][0].content.slice(0, 60) }}<span v-if="notesByPage[page.id][0].content.length > 60">…</span>”
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -252,6 +258,20 @@ const showVersionSettings = ref(false)
 const isDragOver = ref(false)
 const showDiffView = ref(false)
 const diffData = ref<{ fromVersion: any; toVersion: any } | null>(null)
+
+const notesByPage = computed<Record<string, NoteEntry[]>>(() => {
+  const map: Record<string, NoteEntry[]> = {}
+  for (const note of taskNotes.value) {
+    if (!note.pageId) {
+      continue
+    }
+    if (!map[note.pageId]) {
+      map[note.pageId] = []
+    }
+    map[note.pageId].push(note)
+  }
+  return map
+})
 
 // Version management state
 const hasUnsavedChanges = ref(false)
@@ -1096,6 +1116,33 @@ watch(showDiffView, (newValue) => {
   font-size: 11px;
   color: #718096;
   margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-notes {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #4a5568;
+}
+
+.reference-notes .note-count {
+  background: #edf2f7;
+  color: #2b6cb0;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.reference-notes .note-preview {
+  flex: 1;
+  min-width: 0;
+  font-style: italic;
+  color: #4a5568;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
