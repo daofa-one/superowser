@@ -104,10 +104,22 @@
       <!-- Editor area -->
       <main class="editor-container" :class="{ 'drag-over': isDragOver }">
         <div class="editor-pane" :style="editorPaneStyle">
-          <!-- Formatting toolbar -->
-          <FormattingToolbar @format-text="handleFormatText" />
+          <!-- Diff mode header -->
+          <div v-if="showDiffView" class="diff-header">
+            <div class="diff-title">
+              <span class="from-version">{{ diffData?.fromVersion.alias || formatTime(diffData?.fromVersion.createdAt, 'short') }}</span>
+              <span class="arrow">→</span>
+              <span class="to-version">{{ diffData?.toVersion.alias || formatTime(diffData?.toVersion.createdAt, 'short') }}</span>
+            </div>
+            <button class="close-diff-btn" @click="closeDiffView">✕ Close Diff</button>
+          </div>
 
+          <!-- Formatting toolbar (hidden in diff mode) -->
+          <FormattingToolbar v-if="!showDiffView" @format-text="handleFormatText" />
+
+          <!-- Regular editor -->
           <VueMonacoEditor
+            v-if="!showDiffView"
             ref="editorRef"
             v-model:value="documentContent"
             :options="editorOptions"
@@ -117,6 +129,13 @@
             @mount="handleEditorMount"
             @change="handleContentChange"
           />
+
+          <!-- Diff editor -->
+          <div
+            v-if="showDiffView"
+            ref="diffEditorRef"
+            class="monaco-diff-editor-wrapper"
+          ></div>
         </div>
 
         <!-- Preview pane -->
@@ -141,6 +160,7 @@
           @delete-version="handleDeleteVersion"
           @duplicate-version="handleDuplicateVersion"
           @create-version="handleCreateVersion"
+          @show-diff="handleShowDiff"
         />
       </aside>
     </div>
@@ -228,6 +248,8 @@ const showSidebar = ref(true)
 const showVersions = ref(false)
 const showVersionSettings = ref(false)
 const isDragOver = ref(false)
+const showDiffView = ref(false)
+const diffData = ref<{ fromVersion: any; toVersion: any } | null>(null)
 
 // Version management state
 const hasUnsavedChanges = ref(false)
@@ -241,7 +263,9 @@ const autoSaveSettings = ref({
 
 // Monaco editor
 const editorRef = ref()
+const diffEditorRef = ref<HTMLElement>()
 let editor: any = null
+let diffEditor: monaco.editor.IStandaloneDiffEditor | null = null
 let layoutRaf: number | null = null
 let editorScrollDisposable: monaco.IDisposable | null = null
 let editorSyncTimeout: number | null = null
@@ -303,6 +327,10 @@ onUnmounted(() => {
   if (editorSyncTimeout) {
     window.clearTimeout(editorSyncTimeout)
     editorSyncTimeout = null
+  }
+  if (diffEditor) {
+    diffEditor.dispose()
+    diffEditor = null
   }
 })
 
@@ -405,14 +433,16 @@ function handleContentChange() {
 }
 
 function scheduleEditorLayout() {
-  if (!editor) return
   if (layoutRaf) {
     cancelAnimationFrame(layoutRaf)
   }
   layoutRaf = requestAnimationFrame(() => {
     layoutRaf = null
-    if (editor) {
+    if (editor && !showDiffView.value) {
       editor.layout()
+    }
+    if (diffEditor && showDiffView.value) {
+      diffEditor.layout()
     }
   })
 }
@@ -641,6 +671,77 @@ function handleCompareVersions() {
   console.log('Compare versions')
 }
 
+function handleShowDiff(data: { fromVersion: any; toVersion: any }) {
+  diffData.value = data
+  showDiffView.value = true
+  showVersions.value = false // Close version panel to show diff
+
+  // Initialize diff editor after DOM update
+  nextTick(() => {
+    initializeDiffEditor()
+  })
+}
+
+function closeDiffView() {
+  showDiffView.value = false
+  diffData.value = null
+
+  // Dispose diff editor
+  if (diffEditor) {
+    diffEditor.dispose()
+    diffEditor = null
+  }
+}
+
+function formatTime(timestamp: number, format: 'short' | 'long' = 'short'): string {
+  const date = new Date(timestamp)
+  if (format === 'short') {
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } else {
+    return date.toLocaleString()
+  }
+}
+
+function initializeDiffEditor() {
+  if (!diffEditorRef.value || !diffData.value) return
+
+  // Dispose existing diff editor
+  if (diffEditor) {
+    diffEditor.dispose()
+  }
+
+  const { fromVersion, toVersion } = diffData.value
+
+  // Create Monaco diff editor
+  diffEditor = monaco.editor.createDiffEditor(diffEditorRef.value, {
+    enableSplitViewResizing: true,
+    renderSideBySide: true,
+    ignoreTrimWhitespace: false,
+    renderWhitespace: 'boundary',
+    renderLineHighlight: 'all',
+    scrollBeyondLastLine: false,
+    minimap: { enabled: false },
+    fontSize: 14,
+    fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+    automaticLayout: true,
+    readOnly: true
+  })
+
+  // Set diff content
+  const originalModel = monaco.editor.createModel(fromVersion.content || '', 'markdown')
+  const modifiedModel = monaco.editor.createModel(toVersion.content || '', 'markdown')
+
+  diffEditor.setModel({
+    original: originalModel,
+    modified: modifiedModel
+  })
+}
+
 // Auto-save
 let saveTimeout: number | null = null
 function debouncedSave() {
@@ -829,6 +930,16 @@ watch(previewContentRef, (newRef) => {
     })
   }
 })
+
+// Watch for diff view changes to layout diff editor
+watch(showDiffView, (newValue) => {
+  nextTick(() => {
+    if (newValue && diffEditor) {
+      diffEditor.layout()
+    }
+    scheduleEditorLayout()
+  })
+})
 </script>
 
 <style scoped>
@@ -988,6 +1099,10 @@ watch(previewContentRef, (newRef) => {
   height: 100%;
 }
 
+.monaco-diff-editor-wrapper {
+  height: 100%;
+}
+
 .version-panel {
   width: 300px;
   background: #f7fafc;
@@ -1103,5 +1218,66 @@ watch(previewContentRef, (newRef) => {
   background: #2c5aa0;
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(49, 130, 206, 0.4);
+}
+
+/* Diff editor styles */
+.diff-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.diff-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.from-version {
+  color: #dc2626;
+  background: #fef2f2;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #fecaca;
+}
+
+.to-version {
+  color: #059669;
+  background: #f0fdf4;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #bbf7d0;
+}
+
+.arrow {
+  color: #6b7280;
+  font-weight: bold;
+}
+
+.close-diff-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.close-diff-btn:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.monaco-diff-editor-wrapper {
+  flex: 1;
+  min-height: 0;
 }
 </style>

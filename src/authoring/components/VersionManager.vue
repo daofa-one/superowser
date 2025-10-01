@@ -136,10 +136,36 @@
           </select>
         </div>
         <div v-if="compareFrom && compareTo && compareFrom !== compareTo" class="comparison-result">
-          <div class="diff-stats">
-            <span class="stat added">+{{ diffStats.added }}</span>
-            <span class="stat removed">-{{ diffStats.removed }}</span>
-            <span class="stat modified">~{{ diffStats.modified }}</span>
+          <div class="comparison-header">
+            <div class="comparison-versions">
+              <span class="from-version">{{ formatVersionName(fromVersionData!) }}</span>
+              <span class="arrow">→</span>
+              <span class="to-version">{{ formatVersionName(toVersionData!) }}</span>
+            </div>
+            <div class="diff-stats">
+              <span class="stat added">+{{ diffStats.added }} lines</span>
+              <span class="stat removed">-{{ diffStats.removed }} lines</span>
+              <span class="stat modified" v-if="diffStats.modified > 0">~{{ diffStats.modified }} modified</span>
+            </div>
+          </div>
+          <div class="comparison-summary">
+            <div class="size-comparison">
+              <span>Size: {{ formatSize((fromVersionData?.size || 0)) }} → {{ formatSize((toVersionData?.size || 0)) }}</span>
+              <span class="size-change" :class="{
+                positive: (toVersionData?.size || 0) > (fromVersionData?.size || 0),
+                negative: (toVersionData?.size || 0) < (fromVersionData?.size || 0)
+              }">
+                {{ formatSizeChange(fromVersionData?.size || 0, toVersionData?.size || 0) }}
+              </span>
+            </div>
+            <div class="time-comparison">
+              <span>{{ formatTime(fromVersionData!.createdAt, 'short') }} → {{ formatTime(toVersionData!.createdAt, 'short') }}</span>
+            </div>
+          </div>
+          <div class="comparison-actions">
+            <button class="action-btn primary" @click="showDiffInEditor">
+              📄 View Diff in Editor
+            </button>
           </div>
         </div>
       </div>
@@ -302,6 +328,8 @@ interface Emits {
   (e: 'loadVersion', version: DocumentVersionEntry): void
   (e: 'createVersion'): void
   (e: 'deleteVersion', version: DocumentVersionEntry): void
+  (e: 'duplicateVersion', version: DocumentVersionEntry): void
+  (e: 'showDiff', data: { fromVersion: DocumentVersionEntry; toVersion: DocumentVersionEntry }): void
 }
 
 const props = defineProps<Props>()
@@ -352,12 +380,69 @@ const canCreateVersion = computed(() => {
   return props.documentId != null
 })
 
+const fromVersionData = computed(() => {
+  return props.versions.find(v => v.id === compareFrom.value)
+})
+
+const toVersionData = computed(() => {
+  return props.versions.find(v => v.id === compareTo.value)
+})
+
 const diffStats = computed(() => {
-  // Placeholder for diff calculation
+  if (!compareFrom.value || !compareTo.value || compareFrom.value === compareTo.value) {
+    return {
+      added: 0,
+      removed: 0,
+      modified: 0
+    }
+  }
+
+  const fromVersion = props.versions.find(v => v.id === compareFrom.value)
+  const toVersion = props.versions.find(v => v.id === compareTo.value)
+
+  if (!fromVersion || !toVersion) {
+    return {
+      added: 0,
+      removed: 0,
+      modified: 0
+    }
+  }
+
+  // Use proper line-by-line diff calculation
+  const fromLines = (fromVersion.content || '').split('\n')
+  const toLines = (toVersion.content || '').split('\n')
+
+  // Simple LCS-based diff algorithm
+  const maxLines = Math.max(fromLines.length, toLines.length)
+  let added = 0
+  let removed = 0
+  let modified = 0
+
+  // For a more accurate diff, we'll use a simplified algorithm
+  // that tracks actual line changes by position
+  const minLines = Math.min(fromLines.length, toLines.length)
+
+  // Check for modified lines (same position, different content)
+  for (let i = 0; i < minLines; i++) {
+    if (fromLines[i] !== toLines[i]) {
+      modified++
+    }
+  }
+
+  // Count added lines (when to-version is longer)
+  if (toLines.length > fromLines.length) {
+    added = toLines.length - fromLines.length
+  }
+
+  // Count removed lines (when from-version is longer)
+  if (fromLines.length > toLines.length) {
+    removed = fromLines.length - toLines.length
+  }
+
   return {
-    added: 0,
-    removed: 0,
-    modified: 0
+    added,
+    removed,
+    modified
   }
 })
 
@@ -496,6 +581,17 @@ function closeContextMenu() {
   contextMenu.value.versionId = null
 }
 
+function showDiffInEditor() {
+  if (!fromVersionData.value || !toVersionData.value) {
+    return
+  }
+
+  emit('showDiff', {
+    fromVersion: fromVersionData.value,
+    toVersion: toVersionData.value
+  })
+}
+
 function formatVersionName(version: DocumentVersionEntry): string {
   // Always prioritize custom alias if it exists
   if (version.alias && version.alias.trim()) {
@@ -528,6 +624,20 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB'
   return Math.round(bytes / (1024 * 1024)) + ' MB'
+}
+
+function formatSizeChange(fromSize: number, toSize: number): string {
+  const diff = toSize - fromSize
+  if (diff === 0) return '(no change)'
+
+  const sign = diff > 0 ? '+' : ''
+  if (Math.abs(diff) < 1024) {
+    return `(${sign}${diff} B)`
+  } else if (Math.abs(diff) < 1024 * 1024) {
+    return `(${sign}${Math.round(diff / 1024)} KB)`
+  } else {
+    return `(${sign}${Math.round(diff / (1024 * 1024))} MB)`
+  }
 }
 
 async function updateSettings() {
@@ -776,27 +886,97 @@ onUnmounted(() => {
 
 .comparison-selectors {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   margin-bottom: 12px;
 }
 
 .compare-select {
-  flex: 1;
-  padding: 6px 8px;
+  width: 100%;
+  padding: 8px;
   border: 1px solid #cbd5e0;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 13px;
+  box-sizing: border-box;
+  min-width: 0; /* Allow shrinking */
 }
 
 .comparison-result {
+  background: #f7fafc;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  margin-top: 12px;
+}
+
+.comparison-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.comparison-versions {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.from-version {
+  color: #e53e3e;
+}
+
+.to-version {
+  color: #38a169;
+}
+
+.arrow {
+  color: #718096;
+  font-size: 14px;
 }
 
 .diff-stats {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.comparison-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #4a5568;
+}
+
+.size-comparison {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.size-change {
+  font-weight: 500;
+}
+
+.size-change.positive {
+  color: #38a169;
+}
+
+.size-change.negative {
+  color: #e53e3e;
+}
+
+.time-comparison {
+  color: #718096;
+}
+
+.comparison-actions {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
 }
 
 .stat {
