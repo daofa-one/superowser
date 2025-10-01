@@ -5,24 +5,53 @@
       <div class="title-stack">
         <template v-if="documentLoaded">
           <div class="title-container">
-            <h1
-              v-if="!isEditingTitle"
-              class="document-title"
-              title="Click to edit title"
-              @click="() => startEditTitle(documentTitle)"
-            >
-              {{ documentTitle }}
-            </h1>
-            <input
-              v-else
-              ref="titleInputRef"
-              v-model="editTitleValue"
-              class="document-title-input"
-              type="text"
-              @blur="handleSaveTitle"
-              @keydown.enter="handleSaveTitle"
-              @keydown.escape="cancelEditTitle"
-            />
+            <div class="title-row">
+              <h1
+                v-if="!isEditingTitle"
+                class="document-title"
+                title="Click to edit title"
+                @click="() => startEditTitle(documentTitle)"
+              >
+                {{ documentTitle }}
+              </h1>
+              <input
+                v-else
+                ref="titleInputRef"
+                v-model="editTitleValue"
+                class="document-title-input"
+                type="text"
+                @blur="handleSaveTitle"
+                @keydown.enter="handleSaveTitle"
+                @keydown.escape="cancelEditTitle"
+              />
+
+              <!-- Document Status Badge -->
+              <div v-if="document && !isEditingTitle" class="status-container">
+                <button
+                  class="status-badge"
+                  :class="`status-${document.status}`"
+                  title="Click to change document status"
+                  @click="toggleStatusMenu"
+                >
+                  {{ document.status }}
+                  <span class="status-arrow">▼</span>
+                </button>
+
+                <!-- Status Dropdown Menu -->
+                <div v-if="showStatusMenu" class="status-menu">
+                  <button
+                    v-for="status in statusOptions"
+                    :key="status"
+                    class="status-option"
+                    :class="{ active: document.status === status }"
+                    @click="changeDocumentStatus(status)"
+                  >
+                    <span class="status-preview" :class="`status-${status}`">{{ status }}</span>
+                  </button>
+                </div>
+
+              </div>
+            </div>
           </div>
           <div v-if="task" class="task-meta">
             <span class="task-badge">[{{ task.name }}]</span>
@@ -43,6 +72,7 @@
         :is-auto-saving="isAutoSaving"
         :auto-save-enabled="autoSaveEnabled"
         :auto-save-interval="autoSaveInterval"
+        :document-status="documentStatus"
         @quick-save="$emit('saveDocument')"
         @create-version="$emit('createVersion')"
         @show-history="$emit('toggleVersions')"
@@ -86,6 +116,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useTitleEditing } from '../composables/useTitleEditing'
 import VersionIndicator from './VersionIndicator.vue'
 import type { DocumentEntry, TaskEntry, DocumentVersionEntry } from '../../shared/models'
@@ -104,6 +135,7 @@ interface Props {
   isAutoSaving: boolean
   autoSaveEnabled: boolean
   autoSaveInterval: number
+  documentStatus?: 'draft' | 'review' | 'final' | 'archived'
 }
 
 interface Emits {
@@ -115,6 +147,7 @@ interface Emits {
   (e: 'createVersion'): void
   (e: 'showVersionSettings'): void
   (e: 'compareVersions'): void
+  (e: 'updateDocumentStatus', status: 'draft' | 'review' | 'final' | 'archived'): void
 }
 
 const props = defineProps<Props>()
@@ -139,6 +172,42 @@ async function handleSaveTitle() {
     emit('updateTitle', newTitle)
   }
 }
+
+// Document status management
+const showStatusMenu = ref(false)
+const statusOptions = ['draft', 'review', 'final', 'archived'] as const
+
+function toggleStatusMenu() {
+  showStatusMenu.value = !showStatusMenu.value
+}
+
+async function changeDocumentStatus(status: 'draft' | 'review' | 'final' | 'archived') {
+  if (props.document && status !== props.document.status) {
+    emit('updateDocumentStatus', status)
+  }
+  showStatusMenu.value = false
+}
+
+// Close status menu when clicking outside
+function handleClickOutside(event: Event) {
+  if (!showStatusMenu.value) return
+
+  const target = event.target as HTMLElement
+  const statusContainer = target.closest('.status-container')
+
+  // Don't close if clicking within the status container
+  if (!statusContainer) {
+    showStatusMenu.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <style scoped>
@@ -285,5 +354,111 @@ async function handleSaveTitle() {
 .save-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Document Status Styles */
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.status-container {
+  position: relative;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  text-transform: capitalize;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.status-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.status-arrow {
+  font-size: 8px;
+  margin-left: 2px;
+  transition: transform 0.2s ease;
+}
+
+.status-badge:hover .status-arrow {
+  transform: rotate(180deg);
+}
+
+/* Status color schemes (matching TaskDocumentsList) */
+.status-draft {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-review {
+  background: #d1ecf1;
+  color: #0c5460;
+}
+
+.status-final {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-archived {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+/* Status dropdown menu */
+.status-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  padding: 4px 0;
+  min-width: 120px;
+  margin-top: 2px;
+}
+
+.status-option {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.status-option:hover {
+  background: #f3f4f6;
+}
+
+.status-option.active {
+  background: #e5e7eb;
+  font-weight: 600;
+}
+
+.status-preview {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: capitalize;
 }
 </style>

@@ -41,7 +41,7 @@ type VersionManagementSettings = {
     enableKeyboardShortcuts: boolean
   }
   advanced: {
-    enableVersionBranching: boolean
+    enableVersionBranching: boolean // Future feature - UI not yet implemented
     enableSemanticTags: boolean
     autoTagging: {
       enabled: boolean
@@ -280,7 +280,7 @@ const getDefaultVersionSettings = (): VersionManagementSettings => ({
     enableKeyboardShortcuts: true
   },
   advanced: {
-    enableVersionBranching: false,
+    enableVersionBranching: false, // Future feature - disabled until UI is implemented
     enableSemanticTags: true,
     autoTagging: {
       enabled: true,
@@ -368,7 +368,7 @@ const getCurrentVersionSettings = (): VersionManagementSettings => {
       enableKeyboardShortcuts: versionEnableShortcuts?.checked ?? defaults.ui.enableKeyboardShortcuts
     },
     advanced: {
-      enableVersionBranching: defaults.advanced.enableVersionBranching,
+      enableVersionBranching: defaults.advanced.enableVersionBranching, // Future feature
       enableSemanticTags: versionEnableTagging?.checked ?? defaults.advanced.enableSemanticTags,
       autoTagging: {
         enabled: defaults.advanced.autoTagging.enabled,
@@ -470,7 +470,7 @@ const applyPreset = (presetName: 'conservative' | 'power-user' | 'minimal') => {
         },
         advanced: {
           ...getDefaultVersionSettings().advanced,
-          enableVersionBranching: true
+          enableVersionBranching: true // Future feature - would be enabled for power users
         }
       }
       break

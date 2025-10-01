@@ -44,11 +44,11 @@
           <div v-if="settings.autoSave.enabled" class="sub-settings">
             <div class="setting-item">
               <label>Save interval:</label>
-              <select v-model="settings.autoSave.interval" @change="updateSettings">
-                <option value="30">30 seconds</option>
-                <option value="60">1 minute</option>
-                <option value="300">5 minutes</option>
-                <option value="600">10 minutes</option>
+              <select v-model.number="settings.autoSave.interval" @change="updateSettings">
+                <option :value="30">30 seconds</option>
+                <option :value="60">1 minute</option>
+                <option :value="300">5 minutes</option>
+                <option :value="600">10 minutes</option>
               </select>
             </div>
             <div class="setting-item">
@@ -76,11 +76,11 @@
           <div v-if="settings.cleanup.enabled" class="sub-settings">
             <div class="setting-item">
               <label>Keep versions:</label>
-              <select v-model="settings.cleanup.keepVersions" @change="updateSettings">
-                <option value="10">Last 10</option>
-                <option value="25">Last 25</option>
-                <option value="50">Last 50</option>
-                <option value="100">Last 100</option>
+              <select v-model.number="settings.cleanup.keepVersions" @change="updateSettings">
+                <option :value="10">Last 10</option>
+                <option :value="25">Last 25</option>
+                <option :value="50">Last 50</option>
+                <option :value="100">Last 100</option>
               </select>
             </div>
           </div>
@@ -351,12 +351,12 @@ const compareTo = ref('')
 const settings = ref({
   autoSave: {
     enabled: true,
-    interval: 300, // 5 minutes
-    minChanges: 50
+    interval: 300 as number, // 5 minutes
+    minChanges: 50 as number
   },
   cleanup: {
     enabled: false,
-    keepVersions: 25
+    keepVersions: 25 as number
   },
   ui: {
     versionNaming: 'timestamp' as 'timestamp' | 'sequential' | 'semantic'
@@ -641,11 +641,31 @@ function formatSizeChange(fromSize: number, toSize: number): string {
 }
 
 async function updateSettings() {
-  // Save settings to storage
+  // Map component structure back to backend structure and save
   try {
+    const backendSettings = {
+      autoSave: {
+        enabled: settings.value.autoSave.enabled,
+        interval: settings.value.autoSave.interval * 1000, // Convert seconds to ms
+        contentThreshold: settings.value.autoSave.minChanges
+      },
+      storage: {
+        autoCleanup: {
+          enabled: settings.value.cleanup.enabled,
+          keepCount: settings.value.cleanup.keepVersions
+        },
+        maxVersionsPerDocument: settings.value.cleanup.keepVersions
+      },
+      ui: {
+        versionNaming: settings.value.ui.versionNaming
+      }
+    }
+
+    console.log('[VersionManager] Updating settings:', backendSettings)
+
     await chrome.runtime.sendMessage({
       type: 'UPDATE_VERSION_MANAGEMENT_SETTINGS',
-      data: settings.value
+      data: backendSettings
     })
   } catch (error) {
     console.error('Failed to update version settings:', error)
@@ -658,11 +678,33 @@ onMounted(async () => {
     const response = await chrome.runtime.sendMessage({
       type: 'GET_USER_SETTINGS'
     })
+
+    let versionManagement = null
     if (response?.type === 'SUCCESS' && response.data?.versionManagement) {
-      settings.value = { ...settings.value, ...response.data.versionManagement }
+      versionManagement = response.data.versionManagement
     } else if (response?.versionManagement) {
-      // Direct response format
-      settings.value = { ...settings.value, ...response.versionManagement }
+      versionManagement = response.versionManagement
+    }
+
+    if (versionManagement) {
+      // Map the backend structure to the component's expected structure
+      settings.value = {
+        autoSave: {
+          enabled: versionManagement.autoSave?.enabled ?? settings.value.autoSave.enabled,
+          interval: Math.floor((versionManagement.autoSave?.interval ?? 300000) / 1000), // Convert ms to seconds
+          minChanges: versionManagement.autoSave?.contentThreshold ?? settings.value.autoSave.minChanges
+        },
+        cleanup: {
+          enabled: versionManagement.storage?.autoCleanup?.enabled ?? settings.value.cleanup.enabled,
+          keepVersions: versionManagement.storage?.autoCleanup?.keepCount ??
+                       versionManagement.storage?.maxVersionsPerDocument ??
+                       settings.value.cleanup.keepVersions
+        },
+        ui: {
+          versionNaming: versionManagement.ui?.versionNaming ?? settings.value.ui.versionNaming
+        }
+      }
+      console.log('[VersionManager] Loaded settings:', settings.value)
     }
   } catch (error) {
     console.error('Failed to load version settings:', error)

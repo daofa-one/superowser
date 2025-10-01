@@ -219,7 +219,7 @@ export interface VersionManagementSettings {
     enableKeyboardShortcuts: boolean
   }
   advanced: {
-    enableVersionBranching: boolean
+    enableVersionBranching: boolean // Future feature - UI not yet implemented
     enableSemanticTags: boolean
     autoTagging: {
       enabled: boolean

@@ -15,6 +15,7 @@
       :is-auto-saving="isAutoSaving"
       :auto-save-enabled="autoSaveSettings.enabled"
       :auto-save-interval="autoSaveSettings.interval"
+      :document-status="document?.status"
       @toggle-preview="handleTogglePreview"
       @export-document="exportDocument"
       @save-document="handleSaveDocument"
@@ -23,6 +24,7 @@
       @create-version="handleCreateVersion"
       @show-version-settings="showVersionSettings = true"
       @compare-versions="handleCompareVersions"
+      @update-document-status="handleUpdateDocumentStatus"
     />
 
     <!-- Main content area -->
@@ -255,7 +257,13 @@ const diffData = ref<{ fromVersion: any; toVersion: any } | null>(null)
 const hasUnsavedChanges = ref(false)
 const changeCount = ref(0)
 const isAutoSaving = ref(false)
-const currentVersion = ref<any>(null)
+// Current version computed from document's activeVersionId
+const currentVersion = computed(() => {
+  if (!document.value?.activeVersionId || !versions.value.length) {
+    return undefined
+  }
+  return versions.value.find(v => v.id === document.value!.activeVersionId) || undefined
+})
 const autoSaveSettings = ref({
   enabled: true,
   interval: 300 // 5 minutes
@@ -517,6 +525,33 @@ async function handleSaveDocument() {
 
 async function handleUpdateTitle(newTitle: string) {
   await updateDocument({ title: newTitle })
+}
+
+async function handleUpdateDocumentStatus(status: 'draft' | 'review' | 'final' | 'archived') {
+  if (!document.value) return
+
+  try {
+    console.log('[AuthoringWorkspace] Updating document status to:', status)
+
+    const response = await window.chrome.runtime.sendMessage({
+      type: 'UPDATE_DOCUMENT',
+      data: {
+        documentId: document.value.id,
+        updates: { status }
+      }
+    })
+
+    if (response?.type === 'SUCCESS') {
+      console.log('[AuthoringWorkspace] Document status updated successfully')
+      // Reload document to get updated status
+      await loadDocument()
+    } else {
+      throw new Error(response?.error || 'Failed to update document status')
+    }
+  } catch (error) {
+    console.error('[AuthoringWorkspace] Failed to update document status:', error)
+    alert(`Failed to update document status: ${(error as Error)?.message || 'Unknown error'}`)
+  }
 }
 
 function handleHeadingClick(headingId: string) {

@@ -75,6 +75,7 @@ interface Props {
   isAutoSaving: boolean
   autoSaveEnabled: boolean
   autoSaveInterval: number
+  documentStatus?: 'draft' | 'review' | 'final' | 'archived'
 }
 
 interface Emits {
@@ -93,10 +94,19 @@ const showMenu = ref(false)
 
 const currentVersionName = computed(() => {
   if (!props.currentVersion) {
+    // If no version but we have a document status, show that
+    if (props.documentStatus && props.documentStatus !== 'draft') {
+      return props.documentStatus.charAt(0).toUpperCase() + props.documentStatus.slice(1)
+    }
     return 'Draft'
   }
 
-  // Format based on version naming preference (could come from settings)
+  // Always prioritize custom alias if it exists (same logic as VersionManager)
+  if (props.currentVersion.alias && props.currentVersion.alias.trim()) {
+    return props.currentVersion.alias
+  }
+
+  // Fall back to formatted date/time
   const date = new Date(props.currentVersion.createdAt)
   return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {
     hour: '2-digit',
