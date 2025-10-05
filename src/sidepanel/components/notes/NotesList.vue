@@ -132,10 +132,12 @@ onUnmounted(() => {
 <template>
   <div class="notes-list-container">
     <!-- Notes Header -->
+    <!--
     <div v-if="notes.length > 0" class="notes-header">
       <h4>Saved Notes</h4>
       <span class="notes-count">{{ notes.length }}</span>
     </div>
+    -->
 
     <!-- Notes List -->
     <ul v-if="notes.length > 0" class="notes-list">
