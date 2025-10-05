@@ -242,7 +242,9 @@ export interface UserSettings {
   preferredSearchEngine: string
   preferredAiProvider: string
   reuseAiTab: boolean
+  aiLogLevel: 'info' | 'debug'
   versionManagement: VersionManagementSettings
+  aiAutomation?: import('../messaging/ai-types').AIAutomationSettings
 }
 
 // Version Management Operations

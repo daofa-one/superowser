@@ -47,6 +47,14 @@
           </label>
           <p class="field-helper">When enabled, Superowser will focus the first matching assistant tab. If none is open, a new tab is created.</p>
         </div>
+        <div class="field">
+          <span class="field-label">Console log level</span>
+          <select id="ai-log-level-select" class="field-control">
+            <option value="info">Info (minimal logging)</option>
+            <option value="debug">Debug (verbose logging)</option>
+          </select>
+          <p class="field-helper">Controls the amount of console output from AI automation. Debug mode shows detailed execution logs.</p>
+        </div>
         <p id="ai-status-message" class="status"></p>
       </section>
 

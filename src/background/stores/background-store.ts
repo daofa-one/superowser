@@ -138,6 +138,7 @@ export const useBackgroundStore = defineStore('background', {
         preferredSearchEngine: 'google',
         preferredAiProvider: 'chatgpt',
         reuseAiTab: true,
+        aiLogLevel: 'info', // Default to info level for minimal logging
         versionManagement: {
           autoSave: {
             enabled: true,
@@ -315,6 +316,9 @@ export const useBackgroundStore = defineStore('background', {
           }
           if (typeof this.user.settings.reuseAiTab !== 'boolean') {
             this.user.settings.reuseAiTab = true
+          }
+          if (!this.user.settings.aiLogLevel || !['info', 'debug'].includes(this.user.settings.aiLogLevel)) {
+            this.user.settings.aiLogLevel = 'info' // Default to info level
           }
 
           // Initialize version management settings if needed
@@ -534,6 +538,22 @@ export const useBackgroundStore = defineStore('background', {
         await chrome.storage.local.set({ userSettings: this.user.settings })
       } catch (error) {
         console.warn('[Background Store] Failed to persist AI tab preference:', error)
+      }
+
+      this.broadcastStateUpdate('user.settings', this.user.settings)
+    },
+
+    async setAiLogLevelPreference(logLevel: 'info' | 'debug') {
+      if (this.user.settings.aiLogLevel === logLevel) {
+        return
+      }
+
+      this.user.settings.aiLogLevel = logLevel
+
+      try {
+        await chrome.storage.local.set({ userSettings: this.user.settings })
+      } catch (error) {
+        console.warn('[Background Store] Failed to persist AI log level preference:', error)
       }
 
       this.broadcastStateUpdate('user.settings', this.user.settings)
@@ -847,6 +867,12 @@ export const useBackgroundStore = defineStore('background', {
       }
 
       this.broadcastStateUpdate('user.workingSet', this.user.workingSet)
+    },
+
+    async updateAIAutomationSettings(settings: import('../../shared/messaging/ai-types').AIAutomationSettings) {
+      this.user.settings.aiAutomation = settings
+      await this.saveSettingsToStorage()
+      this.broadcastStateUpdate('user.settings', this.user.settings)
     }
   }
 })

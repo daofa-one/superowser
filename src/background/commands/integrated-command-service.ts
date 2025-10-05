@@ -9,6 +9,8 @@ import {
   ResolvedParameters
 } from '../../shared/commands/types'
 import { CommandExecutor } from '../../shared/commands/executor'
+import { AI_MESSAGE_TYPES } from '../../shared/messaging/ai-types'
+import { handleAIRunPrompt } from '../index'
 
 export class IntegratedCommandService extends CommandService {
   constructor(private container: DIContainer) {
@@ -279,6 +281,53 @@ export class IntegratedCommandService extends CommandService {
         const providerKey = providers[providerParam ?? defaultProvider]
           ? (providerParam ?? defaultProvider)
           : 'chatgpt'
+
+        // If query is provided and provider is ChatGPT, try AI automation first
+        if (query && providerKey === 'chatgpt') {
+          try {
+            console.log('[AI Command] Attempting automation for query:', query)
+
+            // Create AI automation request
+            const aiRequest = {
+              id: `ai_cmd_${Date.now()}`,
+              type: AI_MESSAGE_TYPES.AI_RUN_PROMPT,
+              data: {
+                prompt: query,
+                context: {
+                  currentTask: context.activeTask,
+                  documentTitle: 'AI Command'
+                }
+              },
+              timestamp: Date.now()
+            }
+
+            console.log('[AI Command] Initiating AI_RUN_PROMPT directly via background handler')
+
+            const response = await handleAIRunPrompt(aiRequest.data)
+
+            if (response?.requestId) {
+              console.log('[AI Command] Automation request accepted:', response)
+              return CommandExecutor.createSuccessResponse(
+                'text',
+                `✨ AI automation started in background. Your prompt "${query}" is being processed.`,
+                {
+                  metadata: {
+                    provider: providerKey,
+                    query,
+                    requestId: response.requestId,
+                    automated: true
+                  }
+                }
+              )
+            } else {
+              console.warn('[AI Command] Automation returned no requestId')
+              throw new Error('Automation failed')
+            }
+          } catch (error) {
+            console.warn('[AI Command] Automation failed, falling back to manual tab:', error)
+            // Fall through to manual tab creation
+          }
+        }
 
         const provider = providers[providerKey]
         const url = provider.buildUrl(query)
