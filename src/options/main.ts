@@ -59,6 +59,7 @@ type UserSettings = {
   preferredSearchEngine?: string
   preferredAiProvider?: string
   reuseAiTab?: boolean
+  aiHiddenMode?: boolean
   versionManagement?: VersionManagementSettings
 }
 
@@ -79,6 +80,7 @@ const engineStatusMessage = document.getElementById('search-status-message') as 
 const aiSelect = document.getElementById('ai-provider-select') as HTMLSelectElement | null
 const aiStatusMessage = document.getElementById('ai-status-message') as HTMLParagraphElement | null
 const aiReuseToggle = document.getElementById('ai-reuse-toggle') as HTMLInputElement | null
+const aiLogLevelSelect = document.getElementById('ai-log-level-select') as HTMLSelectElement | null
 
 // Version Management Elements
 const versionAutoSaveEnabled = document.getElementById('version-auto-save-enabled') as HTMLInputElement | null
@@ -120,6 +122,8 @@ if (!aiSelect) {
 if (!aiReuseToggle) {
   throw new Error('AI tab reuse toggle element not found')
 }
+
+
 
 const showStatus = (element: HTMLParagraphElement | null, message: string, tone: 'info' | 'success' | 'error' = 'info') => {
   if (!element) return
@@ -164,6 +168,7 @@ const loadSettings = async () => {
 
     aiReuseToggle.checked = settings.reuseAiTab !== false
 
+
     // Load version management settings
     loadVersionManagementSettings(settings.versionManagement)
     updateStorageImpact(settings.versionManagement)
@@ -174,6 +179,7 @@ const loadSettings = async () => {
     showStatus(aiStatusMessage, 'Could not load assistant setting. Using ChatGPT.', 'error')
     aiSelect.value = 'chatgpt'
     aiReuseToggle.checked = true
+
     loadVersionManagementSettings() // Load defaults
   }
 }
@@ -236,6 +242,27 @@ const persistAiReuse = async (reuse: boolean) => {
 aiReuseToggle.addEventListener('change', (event) => {
   const target = event.target as HTMLInputElement
   persistAiReuse(target.checked)
+})
+
+const persistAiLogLevel = async (logLevel: string) => {
+  try {
+    await sendMessage<UserSettings>({
+      type: 'UPDATE_USER_SETTINGS',
+      data: { aiLogLevel: logLevel }
+    })
+    const message = logLevel === 'debug'
+      ? 'Saved. Debug logging enabled - verbose console output.'
+      : 'Saved. Info logging enabled - minimal console output.'
+    showStatus(aiStatusMessage, message, 'success')
+  } catch (error) {
+    console.error('[Options] Failed to save AI log level:', error)
+    showStatus(aiStatusMessage, 'Failed to update log level. Please try again.', 'error')
+  }
+}
+
+aiLogLevelSelect.addEventListener('change', (event) => {
+  const target = event.target as HTMLSelectElement
+  persistAiLogLevel(target.value)
 })
 
 // Version Management Functions

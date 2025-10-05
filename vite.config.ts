@@ -23,6 +23,16 @@ export default defineConfig({
         sidepanel: 'sidepanel/index.html',
         options: 'options/index.html',
         authoring: 'authoring/index.html',
+        'ai-bridge': 'src/content/ai-bridge.ts',
+      },
+      output: {
+        entryFileNames: (chunkInfo) => {
+          // Use predictable name for AI bridge
+          if (chunkInfo.name === 'ai-bridge') {
+            return 'assets/ai-bridge.js'
+          }
+          return 'assets/[name]-[hash].js'
+        },
       },
     },
   },

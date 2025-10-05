@@ -68,6 +68,16 @@ export default defineManifest(async (env) => ({
         'assets/*'
       ],
       matches: ['<all_urls>']
+    },
+    {
+      resources: [
+        'assets/ai-bridge.js'
+      ],
+      matches: [
+        'https://chatgpt.com/*',
+        'https://claude.ai/*',
+        'https://www.perplexity.ai/*'
+      ]
     }
   ],
   content_security_policy: {

@@ -36,6 +36,11 @@ const aiDraftCategory = ref<NoteCategory>('brainstorm')
 const aiDraftComment = ref('')
 const isSavingAiNote = ref(false)
 
+// AI task selection state
+const aiSelectedTasks = ref<string[]>([])
+const aiTaskInput = ref('')
+const showAiTaskSuggestions = ref(false)
+
 const messages = computed<ChatBubble[]>(() => {
   const history = store.cache.recentChats ?? []
   const normalized = history
@@ -258,18 +263,30 @@ const hasCurrentTask = computed(() => !!store.cache.currentTask?.name)
 
 const availableAiTasks = computed<string[]>(() => {
   const taskSet = new Set<string>()
-  (store.cache.recentTasks || []).forEach(task => {
+  // Add tasks from recent tasks cache
+  ;(store.cache.recentTasks || []).forEach((task: any) => {
     if (task?.name) {
       taskSet.add(task.name)
     }
   })
-  aiAvailableTasks.value.forEach(name => {
-    if (name) {
-      taskSet.add(name)
-    }
-  })
   return Array.from(taskSet)
 })
+
+const filteredAiTasks = computed<string[]>(() => {
+  const input = aiTaskInput.value.trim().toLowerCase()
+  if (!input) {
+    return availableAiTasks.value.slice(0, 5) // Show top 5 recent tasks
+  }
+
+  return availableAiTasks.value
+    .filter(task => task.toLowerCase().includes(input))
+    .slice(0, 5)
+})
+
+const filterAiTasks = () => {
+  // Update suggestion visibility based on filtered results
+  showAiTaskSuggestions.value = filteredAiTasks.value.length > 0 || !!aiTaskInput.value.trim()
+}
 
 watch(hasCurrentTask, (present) => {
   if (!present) {
@@ -298,6 +315,10 @@ const closeSaveAiModal = () => {
   aiDraftExtraTasks.value = ''
   aiDraftCategory.value = 'brainstorm'
   aiDraftComment.value = ''
+  // Reset AI task selection state
+  aiSelectedTasks.value = []
+  aiTaskInput.value = ''
+  showAiTaskSuggestions.value = false
 }
 
 const saveAiNote = async () => {

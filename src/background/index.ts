@@ -11,6 +11,16 @@ import { useBackgroundStore } from './stores/background-store'
 import { createPinia, setActivePinia } from 'pinia'
 import { escapeForXML } from '../shared/utils'
 import { formatCommandResponseForChat } from '../shared/commands/formatters'
+import {
+  AIRunPromptRequest,
+  AIExecutePromptRequest,
+  AIProgressUpdate,
+  AIResult,
+  AIError,
+  AIAutomationSettings,
+  getDefaultAISettings,
+  AI_MESSAGE_TYPES
+} from '../shared/messaging/ai-types'
 
 // Default version management settings
 function getDefaultVersionSettings() {
@@ -31,6 +41,17 @@ function getDefaultVersionSettings() {
     }
   }
 }
+
+// AI automation tab management
+const aiAutomationTabs = new Map<string, number>() // provider -> tabId
+
+// Track active automation requests for contextual logging and chat history
+const aiAutomationRequests = new Map<string, {
+    prompt: string
+    provider: string
+    task?: string
+    originalActiveTab?: chrome.tabs.Tab | null
+}>()
 
 // Initialize dependency injection container and shared store
 const container = DIContainer.getInstance()
@@ -120,6 +141,164 @@ const focusOrOpenUrl = async (targetUrl: string) => {
     });
 }
 
+// AI automation utilities
+async function getAISettings(): Promise<AIAutomationSettings> {
+    const userSettings = backgroundStore.user.settings
+    const defaultSettings = getDefaultAISettings()
+    const aiAutomationSettings = userSettings?.aiAutomation || defaultSettings
+
+    // Always focus the assistant tab so users know automation is running
+
+    return aiAutomationSettings
+}
+
+async function findOrCreateAITab(provider: 'chatgpt' | 'claude' | 'perplexity'): Promise<chrome.tabs.Tab> {
+    const settings = await getAISettings()
+    console.log('[AI Automation] Settings:', { reuseTab: settings.reuseTab })
+
+    const providerUrls = {
+        chatgpt: 'https://chatgpt.com',
+        claude: 'https://claude.ai',
+        perplexity: 'https://www.perplexity.ai'
+    }
+
+    const targetUrl = providerUrls[provider]
+
+    // Check if we should reuse existing tab
+    if (settings.reuseTab) {
+        const existingTabId = aiAutomationTabs.get(provider)
+        if (existingTabId) {
+            try {
+                const tab = await chrome.tabs.get(existingTabId)
+                if (tab && tab.url?.includes(targetUrl)) {
+                    console.log('[AI Automation] Reusing existing tab and focusing it')
+                    // Always focus the tab so users know automation is running
+                    await chrome.tabs.update(existingTabId, { active: true })
+                    await chrome.windows.update(tab.windowId!, { focused: true })
+                    return tab
+                }
+            } catch {
+                // Tab no longer exists, remove from tracking
+                aiAutomationTabs.delete(provider)
+            }
+        }
+
+        // Fallback: scan current tabs that match provider URL
+        try {
+            const candidateTabs = await chrome.tabs.query({})
+            const matchingTab = candidateTabs.find(tab => {
+                const candidateUrl = tab.url || (tab as any).pendingUrl
+                if (!candidateUrl) return false
+                try {
+                    const hostname = new URL(candidateUrl).hostname
+                    const targetHostname = new URL(targetUrl).hostname
+                    return hostname === targetHostname || hostname.endsWith(`.${targetHostname}`)
+                } catch {
+                    return candidateUrl.includes(targetUrl)
+                }
+            })
+
+            if (matchingTab && matchingTab.id != null) {
+                aiAutomationTabs.set(provider, matchingTab.id)
+                // Always focus the tab so users know automation is running
+                await chrome.tabs.update(matchingTab.id, { active: true })
+                await chrome.windows.update(matchingTab.windowId!, { focused: true })
+                console.log('[AI Automation] Reusing detected provider tab:', matchingTab.id)
+                return matchingTab
+            }
+        } catch (error) {
+            console.warn('[AI Automation] Failed to query existing tabs for reuse:', error)
+        }
+    }
+
+    // Create new tab and always focus it so users know automation is running
+    console.log('[AI Automation] Creating focused tab for:', targetUrl)
+    const tab = await focusOrOpenUrl(targetUrl)
+
+    aiAutomationTabs.set(provider, tab.id!)
+    console.log('[AI Automation] Tab created:', { id: tab.id, active: tab.active })
+    return tab
+}
+
+async function injectAIContentScript(tabId: number): Promise<void> {
+    try {
+        console.log(`[AI Injection] Starting injection for tab ${tabId}`)
+
+        // Check if content script is already injected
+        const checkResults = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => ({
+                hasBridge: window.hasOwnProperty('superowserAIBridge'),
+                bridgeValue: (window as any).superowserAIBridge,
+                url: window.location.href
+            })
+        })
+
+        const checkResult = checkResults[0]?.result
+        console.log(`[AI Injection] Pre-injection check:`, checkResult)
+
+        if (checkResult?.hasBridge) {
+            console.log(`[AI Injection] Script already injected for tab ${tabId}`)
+            return // Already injected
+        }
+
+        // Inject the AI automation content script with predictable filename
+        console.log(`[AI Injection] Injecting ai-bridge.js for tab ${tabId}`)
+
+        try {
+            const injectionResults = await chrome.scripting.executeScript({
+                target: { tabId },
+                files: ['assets/ai-bridge.js']
+            })
+            console.log(`[AI Injection] Injection results:`, injectionResults)
+        } catch (injectionError) {
+            console.error(`[AI Injection] Failed to inject script:`, injectionError)
+            throw injectionError
+        }
+
+        // Wait a moment for script to initialize
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
+        // Verify injection was successful
+        const verifyResults = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => ({
+                hasBridge: window.hasOwnProperty('superowserAIBridge'),
+                bridgeValue: (window as any).superowserAIBridge,
+                url: window.location.href,
+                scriptTags: Array.from(document.querySelectorAll('script')).length
+            })
+        })
+
+        const verifyResult = verifyResults[0]?.result
+        console.log(`[AI Injection] Post-injection verification:`, verifyResult)
+
+        if (!verifyResult?.hasBridge) {
+            throw new Error(`AI bridge not found after injection. URL: ${verifyResult?.url}`)
+        }
+
+        console.log(`[AI Injection] Successfully injected and verified for tab ${tabId}`)
+    } catch (error) {
+        console.error(`[AI Injection] Failed for tab ${tabId}:`, error)
+        throw new Error(`Failed to inject AI content script: ${error}`)
+    }
+}
+
+async function sendProgressUpdate(requestId: string, status: AIProgressUpdate['status'], message: string, partialContent?: string): Promise<void> {
+    const progressUpdate: AIProgressUpdate = {
+        requestId,
+        status,
+        message,
+        partialContent,
+        timestamp: Date.now()
+    }
+
+    sendRuntimeMessageSafe({
+        type: AI_MESSAGE_TYPES.AI_PROGRESS,
+        data: progressUpdate
+    })
+}
+
 // Initialize the background store with persisted data
 backgroundStore.initialize(container).then(() => {
     console.log('[superowser] Background store initialized');
@@ -134,6 +313,14 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.tabs.onRemoved.addListener((tabId) => {
     try {
         backgroundStore.clearSearchTabById?.(tabId)
+
+        // Clean up AI automation tab tracking
+        for (const [provider, trackedTabId] of aiAutomationTabs.entries()) {
+            if (trackedTabId === tabId) {
+                aiAutomationTabs.delete(provider)
+                break
+            }
+        }
     } catch (error) {
         console.warn('Failed to clear search tab mapping for removed tab:', error)
     }
@@ -798,9 +985,37 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     }
 });
 
-// Message handler for side panel communication
-chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse: (response?: any) => void) => {
+// Message handler for side panel communication and AI bridge
+chrome.runtime.onMessage.addListener((message: any, sender, sendResponse: (response?: any) => void) => {
+    console.log('[Background] Received message:', {
+        type: message.type,
+        id: message.id,
+        hasData: !!message.data,
+        sender: sender.tab ? `tab:${sender.tab.id}` : 'extension',
+        timestamp: Date.now()
+    })
+
+    // Handle AI bridge messages (from content scripts) - exclude AI_RUN_PROMPT which is a command request
+    const aiBridgeMessageTypes = [
+        AI_MESSAGE_TYPES.AI_PROGRESS,
+        AI_MESSAGE_TYPES.AI_RESULT,
+        AI_MESSAGE_TYPES.AI_ERROR,
+        'AI_AUTOMATION_COMPLETE'
+    ]
+    if (message.type && aiBridgeMessageTypes.includes(message.type)) {
+        console.log('[Background] Routing to AI bridge handler:', message.type)
+        handleAIBridgeMessage(message, sender)
+        sendResponse({ success: true })
+        return true
+    }
+
     if (!isRequestMessage(message)) {
+        console.log('[Background] Invalid message format:', {
+            type: message.type,
+            isString: typeof message.type === 'string',
+            isSuccessOrError: message.type === 'SUCCESS' || message.type === 'ERROR',
+            message
+        })
         sendResponse({
             type: 'ERROR',
             error: { message: 'Invalid message format' }
@@ -808,12 +1023,16 @@ chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse: (resp
         return true;
     }
 
+    console.log('[Background] Valid request message, routing to handleMessage:', message.type)
+
     // Handle message asynchronously
     handleMessage(message)
         .then((response: ResponseMessage) => {
+            console.log('[Background] ← Success response for:', message.type, response)
             sendResponse(response);
         })
         .catch((error: Error) => {
+            console.log('[Background] ← Error response for:', message.type, error.message)
             sendResponse({
                 type: 'ERROR',
                 id: message.id,
@@ -828,8 +1047,127 @@ chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse: (resp
     return true;
 });
 
+// Handle messages from AI bridge content scripts
+function handleAIBridgeMessage(message: any, sender: chrome.runtime.MessageSender) {
+    switch (message.type) {
+        case AI_MESSAGE_TYPES.AI_PROGRESS:
+            sendRuntimeMessageSafe(message)
+            break
+        case AI_MESSAGE_TYPES.AI_RESULT:
+            sendRuntimeMessageSafe(message)
+            recordAIResult(message.data as AIResult)
+            break
+        case AI_MESSAGE_TYPES.AI_ERROR:
+            sendRuntimeMessageSafe(message)
+            recordAIError(message.data as AIError)
+            handleAutomationComplete({ requestId: message.data.requestId, success: false }, sender)
+            break
+        case 'AI_AUTOMATION_COMPLETE':
+            // Handle automation completion for auto-close functionality
+            handleAutomationComplete(message.data, sender)
+            break
+        default:
+            console.warn('Unknown AI bridge message type:', message.type)
+    }
+}
+
+// Handle automation completion
+async function handleAutomationComplete(data: { requestId: string; success: boolean }, sender: chrome.runtime.MessageSender) {
+    const settings = await getAISettings()
+    const requestInfo = aiAutomationRequests.get(data.requestId)
+
+    // Restore focus if hiddenMode was used
+    if (settings.hiddenMode && requestInfo?.originalActiveTab?.id) {
+        try {
+            await chrome.tabs.update(requestInfo.originalActiveTab.id, { active: true })
+            await chrome.windows.update(requestInfo.originalActiveTab.windowId!, { focused: true })
+            console.log('[AI Automation] Restored focus to original tab:', requestInfo.originalActiveTab.id)
+        } catch (error) {
+            console.warn('[AI Automation] Failed to restore focus to original tab:', error)
+        }
+    }
+
+    // Ensure request metadata is cleared even if result handling didn't run
+    aiAutomationRequests.delete(data.requestId)
+
+    if (settings.autoCloseTab && data.success && sender.tab?.id) {
+        // Wait a moment for the user to see the result, then close the tab
+        setTimeout(async () => {
+            try {
+                await chrome.tabs.remove(sender.tab!.id!)
+
+                // Remove from our tracking
+                for (const [provider, tabId] of aiAutomationTabs.entries()) {
+                    if (tabId === sender.tab!.id) {
+                        aiAutomationTabs.delete(provider)
+                        break
+                    }
+                }
+            } catch (error) {
+                console.warn('Failed to auto-close AI tab:', error)
+            }
+        }, 2000) // Wait 2 seconds before closing
+    }
+}
+
+function recordAIResult(result: AIResult) {
+    if (!result?.requestId) {
+        return
+    }
+
+    const metadata = aiAutomationRequests.get(result.requestId)
+
+    const prompt = (metadata?.prompt || '').trim()
+    const provider = metadata?.provider || 'chatgpt'
+    const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1)
+
+    const headerCommand = prompt ? `/ai ${prompt}` : '/ai'
+    const content = result.content?.trim() || '(No response received)'
+
+    const formatted = `> ${headerCommand}\n\n${content}\n\n— ${providerLabel}`
+
+    try {
+        backgroundStore.addExtensionChat({
+            content: formatted,
+            command: 'ai',
+            relatedTask: metadata?.task
+        })
+    } catch (error) {
+        console.warn('[AI Automation] Failed to record AI result in chat history:', error)
+    }
+}
+
+function recordAIError(error: AIError) {
+    if (!error?.requestId) {
+        return
+    }
+
+    const metadata = aiAutomationRequests.get(error.requestId)
+
+    const prompt = (metadata?.prompt || '').trim()
+    const provider = metadata?.provider || 'chatgpt'
+    const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1)
+
+    const headerCommand = prompt ? `/ai ${prompt}` : '/ai'
+    const details = error.message || 'Unknown automation error'
+    const reason = error.reason ? ` (${error.reason})` : ''
+
+    const formatted = `> ${headerCommand}\n\n❌ ${details}${reason}\n\n— ${providerLabel}`
+
+    try {
+        backgroundStore.addExtensionChat({
+            content: formatted,
+            command: 'ai',
+            relatedTask: metadata?.task
+        })
+    } catch (recordingError) {
+        console.warn('[AI Automation] Failed to record AI error in chat history:', recordingError)
+    }
+}
+
 async function handleMessage(message: RequestMessage): Promise<ResponseMessage> {
     try {
+        console.log('[Background] handleMessage called with type:', message.type)
         let data: any;
 
         switch (message.type) {
@@ -1092,6 +1430,9 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 if (typeof message.data?.reuseAiTab === 'boolean') {
                     await backgroundStore.setAiTabReusePreference(message.data.reuseAiTab);
                 }
+                if (typeof message.data?.aiLogLevel === 'string' && ['info', 'debug'].includes(message.data.aiLogLevel)) {
+                    await backgroundStore.setAiLogLevelPreference(message.data.aiLogLevel);
+                }
                 data = backgroundStore.user.settings;
                 break;
 
@@ -1181,6 +1522,63 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                 }
                 break;
 
+            // AI Automation handlers
+            case AI_MESSAGE_TYPES.AI_RUN_PROMPT:
+                data = await handleAIRunPrompt(message.data as AIRunPromptRequest);
+                break;
+
+            case AI_MESSAGE_TYPES.AI_GET_SETTINGS:
+                data = await getAISettings();
+                break;
+
+            case AI_MESSAGE_TYPES.AI_UPDATE_SETTINGS:
+                await updateAISettings(message.data);
+                data = await getAISettings();
+                break;
+
+            case AI_MESSAGE_TYPES.AI_UPDATE_SELECTORS:
+                await updateAISelectors(message.data.provider, message.data.selectors);
+                data = { success: true };
+                break;
+
+            case AI_MESSAGE_TYPES.AI_TEST_SELECTORS:
+                data = await testAISelectors(message.data.provider, message.data.selectors);
+                break;
+
+            case 'AI_TEST_AUTOMATION':
+                // Test command for verifying automation works
+                console.log('[AI Test] Running automation test...')
+                data = await handleAIRunPrompt({
+                    prompt: message.data?.prompt || 'Hello, this is a test from Superowser extension',
+                    context: {
+                        currentTask: 'test',
+                        documentTitle: 'Automation Test'
+                    }
+                });
+                break;
+
+            case 'AI_TEST_INJECTION':
+                // Test content script injection
+                console.log('[AI Test] Testing content script injection...')
+                try {
+                    const tab = await findOrCreateAITab('chatgpt')
+                    console.log('[AI Test] Tab found/created:', tab.id)
+                    await injectAIContentScript(tab.id!)
+                    console.log('[AI Test] Content script injected successfully')
+
+                    // Test if bridge is available
+                    const results = await chrome.scripting.executeScript({
+                        target: { tabId: tab.id! },
+                        func: () => window.hasOwnProperty('superowserAIBridge')
+                    })
+                    console.log('[AI Test] Bridge available:', results[0]?.result)
+                    data = { success: true, bridgeAvailable: results[0]?.result }
+                } catch (error) {
+                    console.error('[AI Test] Injection failed:', error)
+                    data = { success: false, error: error.message }
+                }
+                break;
+
             default:
                 throw new Error(`Unknown message type: ${(message as any).type}`);
         }
@@ -1193,6 +1591,143 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
 
     } catch (error) {
         throw error; // Will be caught by the outer catch block
+    }
+}
+
+// AI Automation handler functions
+export async function handleAIRunPrompt(request: AIRunPromptRequest): Promise<{ requestId: string }> {
+    const requestId = `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    try {
+        const settings = await getAISettings()
+        console.log('[AI Automation] handleAIRunPrompt called with settings:', settings)
+
+        // Store the currently active tab to restore focus in hidden mode
+        let originalActiveTab: chrome.tabs.Tab | null = null
+        if (settings.hiddenMode) {
+            const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
+            originalActiveTab = tabs[0] || null
+            console.log('[AI Automation] Stored original active tab for hidden mode:', originalActiveTab?.id)
+        }
+
+        if (!settings.enabled) {
+            throw new Error('AI automation is disabled')
+        }
+
+        // Track request context for later result logging
+        aiAutomationRequests.set(requestId, {
+            prompt: request.prompt,
+            provider: settings.provider,
+            task: request.context?.currentTask,
+            originalActiveTab
+        })
+
+        // Send initial progress update
+        await sendProgressUpdate(requestId, 'opening_tab', 'Opening AI provider tab...')
+
+        // Find or create AI tab
+        console.log('[AI Automation] Creating tab for provider:', settings.provider)
+        const tab = await findOrCreateAITab(settings.provider)
+        console.log('[AI Automation] Tab created/found:', { id: tab.id, active: tab.active, hiddenMode: settings.hiddenMode })
+
+        // Wait for tab to finish loading
+        await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Tab loading timeout')), settings.timeout)
+
+            const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+                if (tabId === tab.id && changeInfo.status === 'complete') {
+                    clearTimeout(timeout)
+                    chrome.tabs.onUpdated.removeListener(listener)
+                    resolve()
+                }
+            }
+
+            chrome.tabs.onUpdated.addListener(listener)
+
+            // If tab is already complete, resolve immediately
+            if (tab.status === 'complete') {
+                clearTimeout(timeout)
+                chrome.tabs.onUpdated.removeListener(listener)
+                resolve()
+            }
+        })
+
+        await sendProgressUpdate(requestId, 'injecting_script', 'Preparing automation...')
+
+        // Inject content script
+        await injectAIContentScript(tab.id!)
+
+        // Check tab state after injection
+        const tabAfterInjection = await chrome.tabs.get(tab.id!)
+        console.log('[AI Automation] Tab state after injection:', { id: tabAfterInjection.id, active: tabAfterInjection.active })
+
+        await sendProgressUpdate(requestId, 'sending_prompt', 'Sending prompt to AI...')
+
+        // Send execution request to content script
+        const executeRequest: AIExecutePromptRequest = {
+            prompt: request.prompt,
+            selectors: settings.selectors,
+            requestId
+        }
+
+        await chrome.tabs.sendMessage(tab.id!, {
+            type: AI_MESSAGE_TYPES.AI_EXECUTE_PROMPT,
+            data: executeRequest
+        })
+
+
+
+        return { requestId }
+
+    } catch (error) {
+        // Send error response
+        const aiError: AIError = {
+            requestId,
+            reason: 'network_error',
+            message: error instanceof Error ? error.message : 'Unknown error occurred',
+            details: error
+        }
+
+        sendRuntimeMessageSafe({
+            type: AI_MESSAGE_TYPES.AI_ERROR,
+            data: aiError
+        })
+
+
+
+        throw error
+    }
+}
+
+async function updateAISettings(updates: Partial<AIAutomationSettings>): Promise<void> {
+    const currentSettings = await getAISettings()
+    const newSettings = { ...currentSettings, ...updates }
+
+    // Store in background store
+    await backgroundStore.updateAIAutomationSettings?.(newSettings)
+}
+
+async function updateAISelectors(provider: string, selectors: Partial<AIAutomationSettings['selectors']>): Promise<void> {
+    const settings = await getAISettings()
+    const newSelectors = { ...settings.selectors, ...selectors }
+
+    await updateAISettings({ selectors: newSelectors })
+}
+
+async function testAISelectors(provider: string, selectors: AIAutomationSettings['selectors']): Promise<{ success: boolean; found: string[]; missing: string[] }> {
+    try {
+        const tab = await findOrCreateAITab(provider as 'chatgpt' | 'claude' | 'perplexity')
+        await injectAIContentScript(tab.id!)
+
+        // Test selectors via content script
+        const result = await chrome.tabs.sendMessage(tab.id!, {
+            type: 'TEST_SELECTORS',
+            data: { selectors }
+        })
+
+        return result
+    } catch (error) {
+        throw new Error(`Failed to test selectors: ${error}`)
     }
 }
 

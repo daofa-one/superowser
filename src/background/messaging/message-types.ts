@@ -10,6 +10,7 @@ import {
   SearchQuery,
   UserSettings
 } from '../../shared/models'
+import { AIRunPromptRequest } from '../../shared/messaging/ai-types'
 
 // Base message structure
 export interface BaseMessage {
@@ -129,6 +130,9 @@ export interface UpdateUserSettingsMessage extends BaseMessage {
   type: 'UPDATE_USER_SETTINGS'
   data: {
     preferredSearchEngine?: string
+    preferredAiProvider?: string
+    reuseAiTab?: boolean
+    aiLogLevel?: 'info' | 'debug'
   }
 }
 
@@ -199,6 +203,12 @@ export interface DeleteNoteMessage extends BaseMessage {
   data: { id: string }
 }
 
+// AI message types
+export interface AIRunPromptMessage extends BaseMessage {
+  type: 'AI_RUN_PROMPT'
+  data: AIRunPromptRequest
+}
+
 // Union type for all request messages
 export type RequestMessage =
   | SavePageMessage
@@ -237,6 +247,7 @@ export type RequestMessage =
   | GetAllNotesMessage
   | UpdateNoteMessage
   | DeleteNoteMessage
+  | AIRunPromptMessage
 
 // Response messages from background to side panel
 export interface SuccessResponse<T = any> extends BaseMessage {
