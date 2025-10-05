@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useSidePanelStore } from '../stores/sidepanel-store'
-import type { PageEntry, TaskEntry, DocumentEntry } from '../../shared/models'
+import type { PageEntry, TaskEntry, DocumentEntry, NoteEntry } from '../../shared/models'
 import TaskDocumentsList from './TaskDocumentsList.vue'
+import NotesList from './notes/NotesList.vue'
 
 const store = useSidePanelStore()
 
 interface TaskContentPayload {
   task: TaskEntry | null
   pages: PageEntry[]
-  notes: unknown[]
+  notes: NoteEntry[]
 }
 
 interface TaskWithStats extends TaskEntry {
@@ -28,6 +29,7 @@ interface RuntimeMessage {
 const currentTask = ref<TaskEntry | null>(null)
 const taskPages = ref<PageEntry[]>([])
 const taskDocuments = ref<DocumentEntry[]>([])
+const taskNotes = ref<NoteEntry[]>([])
 const isLoading = ref(true)
 const showTaskSelector = ref(false)
 const availableTasks = ref<TaskWithStats[]>([])
@@ -35,6 +37,10 @@ const isLoadingTasks = ref(false)
 const taskFilter = ref('')
 const selectedTaskName = ref<string | null>(null)
 const isSettingTask = ref(false)
+
+const isPagesVisible = ref(true)
+const isNotesVisible = ref(true)
+const isDocumentsVisible = ref(true)
 
 const filteredTasks = computed<TaskWithStats[]>(() => {
   const query = taskFilter.value.trim().toLowerCase()
@@ -91,6 +97,7 @@ const applyCurrentTask = async (task: TaskEntry | null) => {
   } else {
     taskPages.value = []
     taskDocuments.value = []
+    taskNotes.value = []
     if (showTaskSelector.value) {
       selectedTaskName.value = null
     }
@@ -139,12 +146,15 @@ const loadTaskPages = async (taskName: string) => {
 
     if (response?.type === 'SUCCESS' && response.data) {
       taskPages.value = response.data.pages || []
+      taskNotes.value = response.data.notes || []
     } else {
       taskPages.value = []
+      taskNotes.value = []
     }
   } catch (error) {
     console.error('Failed to load task pages:', error)
     taskPages.value = []
+    taskNotes.value = []
   }
 }
 
@@ -455,78 +465,105 @@ onUnmounted(() => {
           </div>
           <div class="task-meta">
             <span class="page-count">{{ taskPages.length }} pages</span>
+            <span class="note-count">{{ taskNotes.length }} notes</span>
             <span class="document-count">{{ taskDocuments.length }} documents</span>
           </div>
         </div>
       </header>
 
       <!-- Main Section: Pages List -->
-      <main class="pages-list">
-        <div v-if="taskPages.length > 0" class="pages">
-          <ul class="page-list">
-            <li
-              v-for="page in taskPages"
-              :key="page.id"
-              class="page-row"
-            >
-              <div class="page-icon">
-                <img
-                  v-if="page.favicon"
-                  :src="page.favicon"
-                  alt="Page favicon"
-                  @error="(e) => (e.target as HTMLImageElement).style.display = 'none'"
-                />
-                <div v-else class="default-icon">🌐</div>
-              </div>
-
-              <div class="page-main" @click="openPage(page.url)">
-                <div class="page-title" :title="page.title">
-                  {{ page.title }}
-                </div>
-                <div class="page-url" :title="page.url">
-                  {{ displayUrl(page.url) }}
+      <section class="foldable-section">
+        <header class="foldable-header" @click="isPagesVisible = !isPagesVisible">
+          <h4 class="foldable-title">Pages ({{ taskPages.length }})</h4>
+          <span class="toggle-icon">{{ isPagesVisible ? '▼' : '▶' }}</span>
+        </header>
+        <main v-if="isPagesVisible" class="pages-list">
+          <div v-if="taskPages.length > 0" class="pages">
+            <ul class="page-list">
+              <li
+                v-for="page in taskPages"
+                :key="page.id"
+                class="page-row"
+              >
+                <div class="page-icon">
+                  <img
+                    v-if="page.favicon"
+                    :src="page.favicon"
+                    alt="Page favicon"
+                    @error="(e) => (e.target as HTMLImageElement).style.display = 'none'"
+                  />
+                  <div v-else class="default-icon">🌐</div>
                 </div>
 
-                <div class="page-actions">
-                  <button
-                    class="btn btn-icon btn-remove"
-                    title="Remove from task (keep in storage)"
-                    @click.stop="removeFromTask(page)"
-                  >
-                    ➖
-                  </button>
-                  <button
-                    class="btn btn-icon btn-delete"
-                    title="Delete permanently"
-                    @click.stop="deletePageCompletely(page)"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </div>
+                <div class="page-main" @click="openPage(page.url)">
+                  <div class="page-title" :title="page.title">
+                    {{ page.title }}
+                  </div>
+                  <div class="page-url" :title="page.url">
+                    {{ displayUrl(page.url) }}
+                  </div>
 
-              <div v-if="page.tags && page.tags.length > 0" class="page-tags">
-                <span v-for="tag in page.tags" :key="tag" class="tag">
-                  #{{ tag }}
-                </span>
-              </div>
-            </li>
-          </ul>
+                  <div class="page-actions">
+                    <button
+                      class="btn btn-icon btn-remove"
+                      title="Remove from task (keep in storage)"
+                      @click.stop="removeFromTask(page)"
+                    >
+                      ➖
+                    </button>
+                    <button
+                      class="btn btn-icon btn-delete"
+                      title="Delete permanently"
+                      @click.stop="deletePageCompletely(page)"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+
+                <div v-if="page.tags && page.tags.length > 0" class="page-tags">
+                  <span v-for="tag in page.tags" :key="tag" class="tag">
+                    #{{ tag }}
+                  </span>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div v-else class="empty-state">
+            <div class="empty-icon">📁</div>
+            <div class="empty-message">No pages in this task yet</div>
+            <div class="empty-hint">Save pages to this task to see them here</div>
+          </div>
+        </main>
+      </section>
+
+      <!-- Notes Section -->
+      <section class="foldable-section">
+        <header class="foldable-header" @click="isNotesVisible = !isNotesVisible">
+          <h4 class="foldable-title">Notes ({{ taskNotes.length }})</h4>
+          <span class="toggle-icon">{{ isNotesVisible ? '▼' : '▶' }}</span>
+        </header>
+        <NotesList v-if="isNotesVisible && taskNotes.length > 0" :notes="taskNotes" />
+        <div v-if="isNotesVisible && taskNotes.length === 0" class="empty-state">
+          <div class="empty-icon">📝</div>
+          <div class="empty-message">No notes in this task yet</div>
         </div>
-
-        <div v-else class="empty-state">
-          <div class="empty-icon">📁</div>
-          <div class="empty-message">No pages in this task yet</div>
-          <div class="empty-hint">Save pages to this task to see them here</div>
-        </div>
-      </main>
+      </section>
 
       <!-- Documents Section -->
-      <TaskDocumentsList
-        :documents="taskDocuments"
-        :current-task="currentTask"
-        @refresh="refreshDocuments"
-      />
+      <section class="foldable-section">
+        <header class="foldable-header" @click="isDocumentsVisible = !isDocumentsVisible">
+          <h4 class="foldable-title">Documents ({{ taskDocuments.length }})</h4>
+          <span class="toggle-icon">{{ isDocumentsVisible ? '▼' : '▶' }}</span>
+        </header>
+        <TaskDocumentsList
+          v-if="isDocumentsVisible"
+          :documents="taskDocuments"
+          :current-task="currentTask"
+          @refresh="refreshDocuments"
+        />
+      </section>
     </div>
 
     <!-- No Active Task State -->
@@ -779,6 +816,14 @@ onUnmounted(() => {
   font-size: 11px;
   color: #64748b;
   background: #f0f9ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.note-count {
+  font-size: 11px;
+  color: #64748b;
+  background: #f0fff4;
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -1287,6 +1332,35 @@ onUnmounted(() => {
 .btn-delete:hover {
   background: #f5c6cb;
   color: #5a1a1d;
+}
+
+/* Foldable Sections */
+.foldable-section {
+  border-top: 1px solid #e2e8f0;
+}
+
+.foldable-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  cursor: pointer;
+  background: #f8fafc;
+}
+
+.foldable-header:hover {
+  background: #f1f5f9;
+}
+
+.foldable-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.toggle-icon {
+  font-size: 12px;
+  color: #64748b;
 }
 
 </style>
