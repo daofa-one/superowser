@@ -17,7 +17,9 @@
       "Bash(npm run:*)",
       "Bash(npm install:*)",
       "WebFetch(domain:squidfunk.github.io)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(find:*)",
+      "WebFetch(domain:chatgpt.com)"
     ],
     "deny": [],
     "ask": []
