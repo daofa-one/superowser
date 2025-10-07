@@ -50,7 +50,6 @@ const aiAutomationRequests = new Map<string, {
     prompt: string
     provider: string
     task?: string
-    originalActiveTab?: chrome.tabs.Tab | null
 }>()
 
 // Initialize dependency injection container and shared store
@@ -1076,16 +1075,7 @@ async function handleAutomationComplete(data: { requestId: string; success: bool
     const settings = await getAISettings()
     const requestInfo = aiAutomationRequests.get(data.requestId)
 
-    // Restore focus if hiddenMode was used
-    if (settings.hiddenMode && requestInfo?.originalActiveTab?.id) {
-        try {
-            await chrome.tabs.update(requestInfo.originalActiveTab.id, { active: true })
-            await chrome.windows.update(requestInfo.originalActiveTab.windowId!, { focused: true })
-            console.log('[AI Automation] Restored focus to original tab:', requestInfo.originalActiveTab.id)
-        } catch (error) {
-            console.warn('[AI Automation] Failed to restore focus to original tab:', error)
-        }
-    }
+    // Tab remains focused so users know automation is running
 
     // Ensure request metadata is cleared even if result handling didn't run
     aiAutomationRequests.delete(data.requestId)
@@ -1394,13 +1384,30 @@ async function handleMessage(message: RequestMessage): Promise<ResponseMessage> 
                             }
                         }
 
-                        const formattedContent = formatCommandResponseForChat(trimmedContent, displayResponse)
+                        // Check if this is a component-based response
+                        const isComponentResponse = displayResponse.type === 'task-list' || displayResponse.type === 'task-creator'
 
-                        backgroundStore.addExtensionChat({
-                            content: formattedContent,
-                            command: commandName,
-                            relatedTask: message.data?.relatedTask || container.analyticsService.getCurrentContext().activeTask
-                        })
+                        if (isComponentResponse) {
+                            // For component responses, store the component data
+                            const componentContent = `> ${trimmedContent}\n\n${displayResponse.content}`
+
+                            backgroundStore.addExtensionChat({
+                                content: componentContent,
+                                command: commandName,
+                                relatedTask: message.data?.relatedTask || container.analyticsService.getCurrentContext().activeTask,
+                                componentData: displayResponse.componentData || displayResponse,
+                                responseType: displayResponse.type
+                            })
+                        } else {
+                            // For text responses, use the existing formatter
+                            const formattedContent = formatCommandResponseForChat(trimmedContent, displayResponse)
+
+                            backgroundStore.addExtensionChat({
+                                content: formattedContent,
+                                command: commandName,
+                                relatedTask: message.data?.relatedTask || container.analyticsService.getCurrentContext().activeTask
+                            })
+                        }
                     } else {
                         backgroundStore.addExtensionChat({
                             content: chatContent,
@@ -1602,13 +1609,7 @@ export async function handleAIRunPrompt(request: AIRunPromptRequest): Promise<{ 
         const settings = await getAISettings()
         console.log('[AI Automation] handleAIRunPrompt called with settings:', settings)
 
-        // Store the currently active tab to restore focus in hidden mode
-        let originalActiveTab: chrome.tabs.Tab | null = null
-        if (settings.hiddenMode) {
-            const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
-            originalActiveTab = tabs[0] || null
-            console.log('[AI Automation] Stored original active tab for hidden mode:', originalActiveTab?.id)
-        }
+        // Always focus the assistant tab so users know automation is running
 
         if (!settings.enabled) {
             throw new Error('AI automation is disabled')
@@ -1618,8 +1619,7 @@ export async function handleAIRunPrompt(request: AIRunPromptRequest): Promise<{ 
         aiAutomationRequests.set(requestId, {
             prompt: request.prompt,
             provider: settings.provider,
-            task: request.context?.currentTask,
-            originalActiveTab
+            task: request.context?.currentTask
         })
 
         // Send initial progress update
@@ -1628,7 +1628,7 @@ export async function handleAIRunPrompt(request: AIRunPromptRequest): Promise<{ 
         // Find or create AI tab
         console.log('[AI Automation] Creating tab for provider:', settings.provider)
         const tab = await findOrCreateAITab(settings.provider)
-        console.log('[AI Automation] Tab created/found:', { id: tab.id, active: tab.active, hiddenMode: settings.hiddenMode })
+        console.log('[AI Automation] Tab created/found:', { id: tab.id, active: tab.active })
 
         // Wait for tab to finish loading
         await new Promise<void>((resolve, reject) => {

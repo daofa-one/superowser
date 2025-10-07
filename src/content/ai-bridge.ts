@@ -878,7 +878,6 @@ class AIBridge {
 
       // Check if it's ONLY the prefix with no meaningful content after
       const prefixOnlyPatterns = [
-        /^chatgpt said:\s*$/i,
         /^assistant said:\s*$/i,
         /^thinking\.\.\.\s*$/i,
         /^generating response\.\.\.\s*$/i,
@@ -901,8 +900,6 @@ class AIBridge {
 
     // For shorter content, use the original strict checking
     const placeholderPatterns = [
-      'chatgpt said:',
-      'chatgpt said',
       'assistant said:',
       'assistant said',
       'thinking...',

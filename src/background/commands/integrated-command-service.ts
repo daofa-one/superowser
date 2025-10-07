@@ -924,6 +924,24 @@ export class IntegratedCommandService extends CommandService {
           required: false,
           description: 'Maximum number of tasks to show (default 10, max 50)',
           defaultValue: 10
+        },
+        {
+          name: 'taskId',
+          type: 'string',
+          required: false,
+          description: 'Show a specific task by ID'
+        },
+        {
+          name: 'show',
+          type: 'boolean',
+          required: false,
+          description: 'Show task details'
+        },
+        {
+          name: 'detail',
+          type: 'boolean',
+          required: false,
+          description: 'Show detailed task view'
         }
       ],
       examples: [
@@ -937,9 +955,18 @@ export class IntegratedCommandService extends CommandService {
           const searchTerm = params.search
           const rawLimit = typeof params.limit === 'number' ? params.limit : undefined
           const limit = Math.min(Math.max(rawLimit ?? 10, 1), 50)
+          const taskId = typeof params.taskId === 'string' ? params.taskId : undefined
+          const detailRequested = params.show === true || params.detail === true || !!taskId
 
-          // Get tasks using real task service
-          let tasks = await this.container.taskService.getAll()
+          if (detailRequested && context.source === 'chatbox') {
+            const detail = await this.buildTaskDetailResponse({ taskId, searchTerm, context })
+            if (detail) {
+              return detail
+            }
+          }
+
+          // Get tasks with stats using task use cases
+          let tasks = await this.container.taskUseCases.getAllTasksWithStats()
 
           // Apply search filter
           if (searchTerm) {
@@ -979,12 +1006,23 @@ export class IntegratedCommandService extends CommandService {
 
           if (context.source === 'omnibox') {
             return CommandExecutor.createNavigationResponse('chat', fullContent)
-          } else {
-            return CommandExecutor.createSuccessResponse('list', {
-              title: fullTitle,
-              items: tasks,
-              formatted: taskList
-            })
+          }
+
+          const componentTasks = await this.enrichTasksForComponent(tasks)
+
+          return {
+            success: true,
+            type: 'task-list',
+            content: fullContent,
+            componentData: {
+              tasks: componentTasks,
+              interactive: true,
+              filters: {
+                search: searchTerm,
+                status: 'all'
+              }
+            },
+            followUp: ['/newtask', '/settask <task_name>']
           }
 
         } catch (error) {
@@ -1037,6 +1075,23 @@ export class IntegratedCommandService extends CommandService {
           const activate = params.activate !== false
 
           if (!name) {
+            if (context.source === 'chatbox') {
+              const existingTasks = await this.container.taskUseCases.getAllTasksWithStats()
+              const componentTasks = await this.enrichTasksForComponent(existingTasks)
+
+              return {
+                success: true,
+                type: 'task-creator',
+                content: 'Create a new task',
+                componentData: {
+                  tasks: componentTasks,
+                  showExisting: true,
+                  interactive: true
+                },
+                followUp: ['/tasks', '/settask <task_name>']
+              }
+            }
+
             return CommandExecutor.createErrorResponse(
               'Task name is required',
               'MISSING_PARAMETER',
@@ -1044,12 +1099,21 @@ export class IntegratedCommandService extends CommandService {
             )
           }
 
-          // Create the task using real task service
-          const task = await this.container.taskUseCases.setActiveTask(name)
+          const existingTask = await this.findTaskByName(name)
+          if (existingTask) {
+            return CommandExecutor.createErrorResponse(
+              `Task "${name}" already exists`,
+              'TASK_EXISTS',
+              'Try a different task name'
+            )
+          }
+
+          const task = await this.container.taskUseCases.createTask(name, description)
 
           let responseMessage = `✅ Created task: ${name}`
 
           if (activate) {
+            await this.container.taskUseCases.setActiveTask(task.name)
             this.container.analyticsService.setActiveTask(task.name)
             responseMessage += ` (now active)`
 
@@ -1070,17 +1134,26 @@ export class IntegratedCommandService extends CommandService {
           }
 
           // Update description if provided
-          if (description && task.id) {
-            try {
-              await this.container.taskService.update(task.id, { description })
-            } catch (error) {
-              console.warn('Failed to update task description:', error)
-            }
-          }
-
           if (context.source === 'omnibox' && activate) {
             return CommandExecutor.createNavigationResponse('home', responseMessage)
           } else {
+            if (context.source === 'chatbox') {
+              const componentTasks = await this.container.taskUseCases.getAllTasksWithStats()
+              const enriched = await this.enrichTasksForComponent(componentTasks)
+
+              return {
+                success: true,
+                type: 'task-list',
+                content: responseMessage,
+                componentData: {
+                  tasks: enriched,
+                  interactive: true,
+                  showCreateForm: false
+                },
+                followUp: ['/tasks', '/save --task', '/note --task']
+              }
+            }
+
             return CommandExecutor.createSuccessResponse('text', responseMessage, {
               followUp: ['/tasks', '/save --task', '/note --task']
             })
@@ -1115,6 +1188,95 @@ export class IntegratedCommandService extends CommandService {
     } catch (error) {
       console.error('Error finding task:', error)
       return null
+    }
+  }
+
+  private async enrichTasksForComponent(tasks: any[]): Promise<any[]> {
+    const activeTask = await this.container.taskUseCases.getActiveTask()
+    const activeTaskName = activeTask?.name || this.container.analyticsService.getCurrentContext().activeTask
+
+    return tasks.map(task => ({
+      id: task.id,
+      name: task.name,
+      description: task.description,
+      status: task.status,
+      isActive: activeTaskName ? task.name === activeTaskName : task.isActive,
+      pageCount: task.pageCount ?? task.pages?.length ?? 0,
+      noteCount: task.noteCount ?? task.notes?.length ?? 0,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt
+    }))
+  }
+
+  private async buildTaskDetailResponse(options: {
+    taskId?: string
+    searchTerm?: string
+    context: CommandContext
+  }): Promise<CommandResponse | null> {
+    const { taskId, searchTerm, context } = options
+
+    let targetTask: any | null = null
+
+    if (taskId) {
+      targetTask = await this.container.taskUseCases.getTaskById(taskId)
+    }
+
+    if (!targetTask && searchTerm) {
+      const tasks = await this.container.taskService.getAll()
+      const searchLower = searchTerm.toLowerCase()
+      targetTask = tasks.find(task => task.name.toLowerCase() === searchLower)
+        || tasks.find(task => task.name.toLowerCase().includes(searchLower))
+    }
+
+    const taskName = targetTask?.name || searchTerm
+
+    if (!taskName) {
+      return CommandExecutor.createErrorResponse(
+        'Task not found',
+        'TASK_NOT_FOUND',
+        'Try /tasks to see available tasks.'
+      )
+    }
+
+    const detail = await this.container.taskUseCases.getTaskWithContent(taskName)
+    const enrichedTasks = await this.enrichTasksForComponent([
+      {
+        ...(detail.task || targetTask || { name: taskName }),
+        pageCount: detail.pages.length,
+        noteCount: detail.notes.length
+      }
+    ])
+
+    const componentTask = enrichedTasks[0]
+    const pages = (detail.pages || []).map(page => ({
+      id: page.id,
+      title: page.title || page.url,
+      url: page.url,
+      savedAt: page.createdAt
+    }))
+
+    const notes = (detail.notes || []).map(note => ({
+      id: note.id,
+      content: note.content,
+      comment: note.comment
+    }))
+
+    if (context.source === 'omnibox') {
+      const message = `Task detail: ${componentTask.name}\nPages: ${pages.length}\nNotes: ${notes.length}`
+      return CommandExecutor.createNavigationResponse('chat', message)
+    }
+
+    return {
+      success: true,
+      type: 'task-detail',
+      content: `Task detail: ${componentTask.name}`,
+      componentData: {
+        task: componentTask,
+        pages,
+        notes,
+        interactive: true
+      },
+      followUp: [`/settask ${componentTask.name}`, '/tasks']
     }
   }
 

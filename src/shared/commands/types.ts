@@ -96,10 +96,30 @@ export interface ResolvedParameters {
   _flags: string[]         // Array of flags (boolean parameters)
 }
 
+export interface ComponentData {
+  tasks?: any[]
+  interactive?: boolean
+  showCreateForm?: boolean
+  showExisting?: boolean
+  editTask?: any
+  filters?: {
+    search?: string
+    status?: string
+  }
+  task?: any
+  pages?: any[]
+  notes?: any[]
+  documents?: any[]
+  refresh?: string
+  // Future component data types can be added here
+  [key: string]: any
+}
+
 export interface CommandResponse {
   success: boolean
   type: ResponseType
   content: any
+  componentData?: ComponentData  // For component-based responses
   metadata?: ResponseMetadata
   actions?: CommandAction[]
   navigation?: NavigationAction
@@ -118,6 +138,9 @@ export type ResponseType =
   | 'error'          // Error response
   | 'help'           // Help/documentation
   | 'confirmation'   // Confirmation dialog needed
+  | 'task-list'      // Interactive task list component
+  | 'task-creator'   // Task creation form component
+  | 'task-detail'    // Task detail component
 
 export interface ResponseMetadata {
   executionTime: number

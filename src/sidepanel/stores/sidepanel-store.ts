@@ -36,6 +36,8 @@ export interface ExtensionChatMessage {
   relatedPages?: string[]
   relatedTask?: string
   timestamp: Date
+  componentData?: ComponentData
+  responseType?: string
 }
 
 export interface UIState {

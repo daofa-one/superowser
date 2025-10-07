@@ -1,20 +1,25 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch, onErrorCaptured } from 'vue'
 import { useSidePanelStore } from '../stores/sidepanel-store'
 import type { BrowserChatMessage, ExtensionChatMessage } from '../stores/sidepanel-store'
-import type { CommandSuggestion } from '../../shared/commands/types'
+import type { CommandSuggestion, ComponentData } from '../../shared/commands/types'
 import type { NoteCategory } from '../../shared/models'
+import TaskList from './task/TaskList.vue'
+import TaskCreator from './task/TaskCreator.vue'
+import TaskShortcuts from './task/TaskShortcuts.vue'
+import { DEFAULT_SHORTCUTS } from './task/shortcuts-config'
 
 type ChatHistoryEntry = (BrowserChatMessage | ExtensionChatMessage) & { timestamp: Date }
 
 interface ChatBubble {
   id: string
-  type: 'user-command' | 'system-response' | 'user-message' | 'browser-message'
+  type: 'user-command' | 'system-response' | 'user-message' | 'browser-message' | 'task-list' | 'task-creator'
   content: string
   timestamp: Date
   command?: string
   commandArgs?: string
   originalEntry?: ChatHistoryEntry
+  componentData?: ComponentData
 }
 
 const store = useSidePanelStore()
@@ -41,6 +46,64 @@ const aiSelectedTasks = ref<string[]>([])
 const aiTaskInput = ref('')
 const showAiTaskSuggestions = ref(false)
 
+// Task shortcuts state
+const userShortcuts = ref(DEFAULT_SHORTCUTS)
+
+// Component error handling
+const componentErrors = ref<Map<string, string>>(new Map())
+const retryAttempts = ref<Map<string, number>>(new Map())
+const MAX_RETRY_ATTEMPTS = 3
+
+const escapeCommandArg = (value: string) => `"${value.replace(/(["\\])/g, '\\$1')}"`
+
+const runChatCommand = async (command: string) => {
+  try {
+    await store.sendExtensionChat(command)
+  } catch (error) {
+    console.error('[ChatBox] Command execution failed:', command, error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to execute command. Check console for details.'
+    })
+  }
+}
+
+// Global error handler for component errors
+onErrorCaptured((error: Error, instance: any, errorInfo: string) => {
+  console.error('[ChatBox] Component error captured:', error, errorInfo)
+
+  // Store error for display
+  const componentId = instance?.$.uid || 'unknown'
+  componentErrors.value.set(componentId, error.message)
+
+  // Notify user
+  store.addNotification({
+    type: 'error',
+    message: 'Component error occurred. Some features may not work properly.'
+  })
+
+  // Return true to prevent error from propagating
+  return true
+})
+
+const clearComponentError = (componentId: string) => {
+  componentErrors.value.delete(componentId)
+  retryAttempts.value.delete(componentId)
+}
+
+const retryComponent = (componentId: string) => {
+  const attempts = retryAttempts.value.get(componentId) || 0
+  if (attempts < MAX_RETRY_ATTEMPTS) {
+    retryAttempts.value.set(componentId, attempts + 1)
+    clearComponentError(componentId)
+  } else {
+    store.addNotification({
+      type: 'error',
+      message: 'Component failed multiple times. Please refresh the page.'
+    })
+  }
+}
+
 const messages = computed<ChatBubble[]>(() => {
   const history = store.cache.recentChats ?? []
   const normalized = history
@@ -55,7 +118,7 @@ const messages = computed<ChatBubble[]>(() => {
   // Convert to chat bubbles, separating command inputs from responses
   const bubbles: ChatBubble[] = []
 
-  normalized.forEach((entry, index) => {
+  normalized.forEach((entry) => {
     if (entry.source === 'extension' && entry.content.startsWith('> /')) {
       // This is a command with response - split into two bubbles
       const lines = entry.content.split('\n')
@@ -77,16 +140,32 @@ const messages = computed<ChatBubble[]>(() => {
         originalEntry: entry
       })
 
-      // System response bubble
-      bubbles.push({
-        id: `${entry.id || entry.timestamp.getTime()}-response`,
-        type: 'system-response',
-        content: responsePart,
-        timestamp: entry.timestamp,
-        command: commandName,
-        commandArgs: commandArgs.join(' '),
-        originalEntry: entry
-      })
+      // Check if this is a component-based response
+      if (entry.componentData && entry.responseType) {
+        const bubbleType = entry.responseType as ChatBubble['type']
+
+        bubbles.push({
+          id: `${entry.id || entry.timestamp.getTime()}-response`,
+          type: bubbleType,
+          content: responsePart,
+          timestamp: entry.timestamp,
+          command: commandName,
+          commandArgs: commandArgs.join(' '),
+          originalEntry: entry,
+          componentData: entry.componentData
+        })
+      } else {
+        // System response bubble (text)
+        bubbles.push({
+          id: `${entry.id || entry.timestamp.getTime()}-response`,
+          type: 'system-response',
+          content: responsePart,
+          timestamp: entry.timestamp,
+          command: commandName,
+          commandArgs: commandArgs.join(' '),
+          originalEntry: entry
+        })
+      }
     } else if (entry.source === 'extension') {
       // Regular extension message
       bubbles.push({
@@ -190,7 +269,7 @@ watch(inputValue, (value) => {
 })
 
 const applySuggestion = (suggestion: CommandSuggestion, triggerSend = false) => {
-  const text = suggestion.text || suggestion.content || ''
+  const text = suggestion.text || ''
   if (!text) {
     return
   }
@@ -396,6 +475,201 @@ const removeAiTask = (taskName: string) => {
   aiSelectedTasks.value = aiSelectedTasks.value.filter(task => task !== taskName)
   filterAiTasks()
 }
+
+// Task component event handlers with error handling
+const handleTaskActivated = async (task: any) => {
+  if (!task?.name) {
+    store.addNotification({
+      type: 'error',
+      message: 'Invalid task data'
+    })
+    return
+  }
+
+  await runChatCommand(`/settask ${escapeCommandArg(task.name)}`)
+}
+
+const handleTaskDeleted = async (task: any) => {
+  console.log('Task deleted:', task)
+  if (!task?.name) {
+    store.addNotification({
+      type: 'error',
+      message: 'Invalid task data'
+    })
+    return
+  }
+
+  if (!confirm(`Delete task "${task.name}"? This will remove the task but keep all associated pages.`)) {
+    return
+  }
+
+  try {
+    const response = await store.sendMessage({
+      type: 'DELETE_TASK',
+      data: { taskName: task.name }
+    })
+
+    if (response?.type === 'SUCCESS') {
+      store.addNotification({
+        type: 'success',
+        message: `Task "${task.name}" deleted successfully`
+      })
+      await runChatCommand('/tasks')
+    } else {
+      throw new Error(response?.message || 'Unknown error')
+    }
+  } catch (error) {
+    console.error('[ChatBox] Failed to delete task:', error)
+    store.addNotification({
+      type: 'error',
+      message: `Failed to delete task: ${error instanceof Error ? error.message : 'Unknown error'}`
+    })
+  }
+}
+
+const handleTaskCreateRequested = async () => {
+  await runChatCommand('/newtask')
+}
+
+const handleTaskEdit = (task: any) => {
+  console.log('Task edit requested:', task)
+  // Auto-fill the input with /edittask command (if it exists) or newtask with pre-filled data
+  inputValue.value = `/newtask --name="${task.name}"${task.description ? ` --description="${task.description}"` : ''} --activate=false `
+  nextTick(() => {
+    textareaRef.value?.focus()
+    // Position cursor at the end
+    const textarea = textareaRef.value
+    if (textarea) {
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+    }
+  })
+}
+
+const handleTaskViewDetails = async (task: any) => {
+  if (!task?.id && !task?.name) {
+    store.addNotification({
+      type: 'error',
+      message: 'Task information unavailable'
+    })
+    return
+  }
+
+  const parts = ['/tasks']
+  if (task.id) {
+    parts.push(`--taskId=${escapeCommandArg(task.id)}`)
+  } else if (task.name) {
+    parts.push(`--search=${escapeCommandArg(task.name)}`)
+  }
+  parts.push('--detail')
+
+  await runChatCommand(parts.join(' '))
+}
+
+// Shortcut event handlers
+const handleShortcutExecuted = (shortcut: any) => {
+  console.log('Shortcut executed:', shortcut)
+  // Fill the input with the shortcut command
+  inputValue.value = shortcut.command + ' '
+  nextTick(() => {
+    textareaRef.value?.focus()
+    // Position cursor at the end
+    const textarea = textareaRef.value
+    if (textarea) {
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+    }
+  })
+}
+
+const handleShortcutCustomize = () => {
+  console.log('Shortcut customization requested')
+  // TODO: Open shortcut customization modal or navigate to options
+  store.addNotification({
+    type: 'info',
+    message: 'Shortcut customization coming soon!'
+  })
+}
+
+// TaskCreator event handlers with validation
+const handleTaskCreate = async (data: { name: string; description?: string; activate: boolean }) => {
+  if (!data?.name?.trim()) {
+    store.addNotification({
+      type: 'error',
+      message: 'Task name is required'
+    })
+    return
+  }
+
+  const parts = [`/newtask ${escapeCommandArg(data.name.trim())}`]
+  if (data.description?.trim()) {
+    parts.push(`--description=${escapeCommandArg(data.description.trim())}`)
+  }
+  if (data.activate === false) {
+    parts.push('--activate=false')
+  }
+
+  await runChatCommand(parts.join(' '))
+}
+
+const handleTaskUpdate = async (data: { task: any; name: string; description?: string; activate: boolean }) => {
+  console.log('Updating task:', data)
+
+  if (!data?.task?.id) {
+    store.addNotification({
+      type: 'error',
+      message: 'Invalid task data'
+    })
+    return
+  }
+
+  if (!data?.name?.trim()) {
+    store.addNotification({
+      type: 'error',
+      message: 'Task name is required'
+    })
+    return
+  }
+
+  if (data.name.length > 100) {
+    store.addNotification({
+      type: 'error',
+      message: 'Task name must be 100 characters or less'
+    })
+    return
+  }
+
+  try {
+    const response = await store.sendMessage({
+      type: 'UPDATE_TASK',
+      data: {
+        taskId: data.task.id,
+        name: data.name.trim(),
+        description: data.description?.trim(),
+        activate: data.activate
+      }
+    })
+
+    if (response?.type === 'SUCCESS') {
+      store.addNotification({
+        type: 'success',
+        message: `Task "${data.name}" updated successfully`
+      })
+      await runChatCommand('/tasks')
+    } else {
+      throw new Error(response?.message || 'Unknown error')
+    }
+  } catch (error) {
+    console.error('[ChatBox] Failed to update task:', error)
+    store.addNotification({
+      type: 'error',
+      message: `Failed to update task: ${error instanceof Error ? error.message : 'Unknown error'}`
+    })
+  }
+}
+
+const handleTaskCreatorCancel = () => {
+  console.log('Task creator cancelled')
+  // Could potentially remove the creator bubble from chat or just let user continue
+}
 </script>
 
 <template>
@@ -425,22 +699,122 @@ const removeAiTask = (taskName: string) => {
             <span class="timestamp">{{ formattedTimestamp(bubble.timestamp) }}</span>
           </div>
           <div class="bubble-content">
-            <p class="content">{{ bubble.content }}</p>
-            <div v-if="bubble.command && bubble.type === 'system-response'" class="command-ref">/{{ bubble.command }}</div>
-            <div
-              v-if="bubble.type === 'system-response' && bubble.command === 'ai'"
-              class="bubble-actions"
-            >
-              <button type="button" class="bubble-action" @click="openSaveAiModal(bubble)">
-                Save to notes
-              </button>
+            <!-- Regular text content -->
+            <div v-if="bubble.type === 'user-command' || bubble.type === 'user-message' || bubble.type === 'browser-message'">
+              <p class="content">{{ bubble.content }}</p>
+            </div>
+
+            <!-- System response with potential components -->
+            <div v-else-if="bubble.type === 'system-response'">
+              <p class="content">{{ bubble.content }}</p>
+              <div v-if="bubble.command" class="command-ref">/{{ bubble.command }}</div>
+              <div v-if="bubble.command === 'ai'" class="bubble-actions">
+                <button type="button" class="bubble-action" @click="openSaveAiModal(bubble)">
+                  Save to notes
+                </button>
+              </div>
+            </div>
+
+            <!-- Task list component with error boundary -->
+            <div v-else-if="bubble.type === 'task-list'" class="component-bubble">
+              <div v-if="componentErrors.has(`task-list-${bubble.id}`)" class="component-error">
+                <div class="error-content">
+                  <span class="error-icon">⚠️</span>
+                  <div class="error-text">
+                    <p class="error-title">Task List Error</p>
+                    <p class="error-message">{{ componentErrors.get(`task-list-${bubble.id}`) }}</p>
+                  </div>
+                  <div class="error-actions">
+                    <button
+                      type="button"
+                      class="error-retry"
+                      :disabled="(retryAttempts.get(`task-list-${bubble.id}`) || 0) >= MAX_RETRY_ATTEMPTS"
+                      @click="retryComponent(`task-list-${bubble.id}`)"
+                    >
+                      Retry
+                    </button>
+                    <button
+                      type="button"
+                      class="error-dismiss"
+                      @click="clearComponentError(`task-list-${bubble.id}`)"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <TaskList
+                v-else
+                :key="`task-list-${bubble.id}-${retryAttempts.get(`task-list-${bubble.id}`) || 0}`"
+                :tasks="bubble.componentData?.tasks || []"
+                :interactive="bubble.componentData?.interactive || false"
+                :filters="bubble.componentData?.filters"
+                @task-activated="handleTaskActivated"
+                @task-deleted="handleTaskDeleted"
+                @task-edit="handleTaskEdit"
+                @task-view-details="handleTaskViewDetails"
+                @create-requested="handleTaskCreateRequested"
+              />
+            </div>
+
+            <!-- Task creator component with error boundary -->
+            <div v-else-if="bubble.type === 'task-creator'" class="component-bubble">
+              <div v-if="componentErrors.has(`task-creator-${bubble.id}`)" class="component-error">
+                <div class="error-content">
+                  <span class="error-icon">⚠️</span>
+                  <div class="error-text">
+                    <p class="error-title">Task Creator Error</p>
+                    <p class="error-message">{{ componentErrors.get(`task-creator-${bubble.id}`) }}</p>
+                  </div>
+                  <div class="error-actions">
+                    <button
+                      type="button"
+                      class="error-retry"
+                      :disabled="(retryAttempts.get(`task-creator-${bubble.id}`) || 0) >= MAX_RETRY_ATTEMPTS"
+                      @click="retryComponent(`task-creator-${bubble.id}`)"
+                    >
+                      Retry
+                    </button>
+                    <button
+                      type="button"
+                      class="error-dismiss"
+                      @click="clearComponentError(`task-creator-${bubble.id}`)"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <TaskCreator
+                v-else
+                :key="`task-creator-${bubble.id}-${retryAttempts.get(`task-creator-${bubble.id}`) || 0}`"
+                :tasks="bubble.componentData?.tasks || []"
+                :show-existing="bubble.componentData?.showExisting !== false"
+                :edit-task="bubble.componentData?.editTask"
+                @create="handleTaskCreate"
+                @update="handleTaskUpdate"
+                @cancel="handleTaskCreatorCancel"
+              />
+            </div>
+
+
+            <!-- Fallback for unknown types -->
+            <div v-else>
+              <p class="content">{{ bubble.content }}</p>
             </div>
           </div>
         </article>
       </TransitionGroup>
     </div>
 
+
     <form class="chat-input" @submit.prevent="sendMessage">
+      <!-- Command shortcuts -->
+      <TaskShortcuts
+        :shortcuts="userShortcuts"
+        @shortcut-executed="handleShortcutExecuted"
+        @customize="handleShortcutCustomize"
+      />
       <div v-if="suggestions.length > 0" class="suggestions">
         <button
           v-for="(suggestion, index) in suggestions"
@@ -727,11 +1101,11 @@ const removeAiTask = (taskName: string) => {
   left: 0;
   right: 0;
   background: #ffffff;
-  padding: 16px;
+  padding: 12px 16px 16px 16px;
   border-top: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   z-index: 10;
 }
 
@@ -997,7 +1371,132 @@ const removeAiTask = (taskName: string) => {
   border-top: 1px solid #e2e8f0;
   background: #f8fafc;
 }
-</style>
+
 .modal-selected-tasks {
   margin-bottom: 4px;
 }
+
+/* Component bubble styles */
+.component-bubble {
+  margin: 0;
+  padding: 0;
+}
+
+.component-bubble .task-list {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fafbfc;
+  max-width: 100%;
+}
+
+/* Adjust bubble content for components */
+.chat-bubble.task-list .bubble-content {
+  padding: 0;
+}
+
+.chat-bubble.task-list .bubble-content .component-bubble {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Component error boundary styles */
+.component-error {
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  padding: 16px;
+  margin: 8px 0;
+}
+
+.error-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.error-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.error-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.error-title {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #dc2626;
+}
+
+.error-message {
+  margin: 0;
+  font-size: 13px;
+  color: #7f1d1d;
+  line-height: 1.4;
+}
+
+.error-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.error-retry,
+.error-dismiss {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.error-retry {
+  background: #dc2626;
+  color: white;
+}
+
+.error-retry:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.error-retry:disabled {
+  background: #fca5a5;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.error-dismiss {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.error-dismiss:hover {
+  background: #e5e7eb;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.detail-action {
+  border: none;
+  background: #3b82f6;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.detail-action:hover {
+  background: #2563eb;
+}
+</style>

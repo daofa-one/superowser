@@ -19,7 +19,8 @@
       "WebFetch(domain:squidfunk.github.io)",
       "WebSearch",
       "Bash(find:*)",
-      "WebFetch(domain:chatgpt.com)"
+      "WebFetch(domain:chatgpt.com)",
+      "Bash(pnpm dev:*)"
     ],
     "deny": [],
     "ask": []

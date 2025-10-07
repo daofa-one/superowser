@@ -46,6 +46,8 @@ export interface ExtensionChatMessage {
   relatedPages?: string[]
   relatedTask?: string
   timestamp: Date
+  componentData?: any
+  responseType?: string
 }
 
 export interface BrowserState {
@@ -805,6 +807,8 @@ export const useBackgroundStore = defineStore('background', {
       command?: string
       relatedPages?: string[]
       relatedTask?: string
+      componentData?: any
+      responseType?: string
     }) {
       const chatMessage: ExtensionChatMessage = {
         id: crypto.randomUUID(),
@@ -813,7 +817,9 @@ export const useBackgroundStore = defineStore('background', {
         timestamp: new Date(),
         command: params.command,
         relatedPages: params.relatedPages,
-        relatedTask: params.relatedTask || this.user.currentTask?.name
+        relatedTask: params.relatedTask || this.user.currentTask?.name,
+        componentData: params.componentData,
+        responseType: params.responseType
       }
 
       this.user.extensionChatHistory.unshift(chatMessage)

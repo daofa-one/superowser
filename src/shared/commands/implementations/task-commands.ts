@@ -166,6 +166,7 @@ export const setTaskCommand: CommandDefinition = {
       }
 
     } catch (error) {
+      console.error('[SetTaskCommand] Unexpected error:', error)
       return CommandExecutor.createErrorResponse(
         error instanceof Error ? error.message : 'Failed to set task',
         'TASK_ERROR',
@@ -266,7 +267,8 @@ export const tasksCommand: CommandDefinition = {
     '/tasks',
     '/tasks --search="project"',
     '/tasks --status=completed',
-    '/tasks --details --limit=10'
+    '/tasks --details --limit=10',
+    '/tasks planning'
   ],
 
   async execute(params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> {
@@ -275,6 +277,67 @@ export const tasksCommand: CommandDefinition = {
       const status = params.status || 'active'
       const limit = params.limit || 20
       const showDetails = params.details === true
+
+      // Validate parameters
+      if (limit < 1 || limit > 100) {
+        return CommandExecutor.createErrorResponse(
+          'Limit must be between 1 and 100',
+          'INVALID_PARAMETER',
+          'Use a limit between 1 and 100'
+        )
+      }
+
+      if (searchTerm && typeof searchTerm !== 'string') {
+        return CommandExecutor.createErrorResponse(
+          'Search term must be text',
+          'INVALID_PARAMETER',
+          'Provide a valid search term'
+        )
+      }
+
+      // If only search term provided and we're in chatbox, show search component
+      if (searchTerm && !params.status && !params.details && context.source === 'chatbox') {
+        try {
+          const tasks = await getTasks({ searchTerm, status: 'all', limit, context })
+
+          return {
+            success: true,
+            type: 'task-list',
+            content: `Found ${tasks.length} task(s) matching "${searchTerm}"`,
+            componentData: {
+              tasks,
+              interactive: true,
+              filters: {
+                search: searchTerm,
+                status: 'all'
+              }
+            },
+            actions: [
+              {
+                id: 'refine-search',
+                label: 'Clear Search',
+                type: 'command',
+                action: '/tasks',
+                style: 'secondary'
+              },
+              {
+                id: 'create-task',
+                label: 'Create New Task',
+                type: 'command',
+                action: '/newtask',
+                style: 'primary'
+              }
+            ]
+          }
+        } catch (searchError) {
+          console.error('[TasksCommand] Search error:', searchError)
+          return CommandExecutor.createErrorResponse(
+            'Search failed',
+            'SEARCH_ERROR',
+            'Try a different search term'
+          )
+        }
+      }
 
       // Fetch tasks (this would integrate with actual task service)
       const tasks = await getTasks({ searchTerm, status, limit, context })
@@ -298,16 +361,58 @@ export const tasksCommand: CommandDefinition = {
       }
 
       // Format task list for display
-      const response = context.source === 'chatbox' && showDetails
-        ? formatDetailedTaskList(tasks, context)
-        : formatSimpleTaskList(tasks, context)
-
-      return response
+      if (context.source === 'chatbox') {
+        // Always return component-based response for chatbox
+        return {
+          success: true,
+          type: 'task-list',
+          content: searchTerm ? `Found ${tasks.length} task(s) matching "${searchTerm}"` : `${tasks.length} task(s)`,
+          componentData: {
+            tasks,
+            interactive: true,
+            showCreateForm: false,
+            filters: {
+              search: searchTerm,
+              status: status
+            }
+          },
+          actions: [
+            {
+              id: 'create-task',
+              label: 'Create New Task',
+              type: 'command',
+              action: '/newtask',
+              style: 'primary'
+            },
+            ...(status !== 'all' ? [{
+              id: 'show-all',
+              label: 'Show All',
+              type: 'command',
+              action: '/tasks --status=all',
+              style: 'secondary'
+            }] : []),
+            ...(searchTerm ? [{
+              id: 'clear-search',
+              label: 'Clear Search',
+              type: 'command',
+              action: '/tasks',
+              style: 'secondary'
+            }] : [])
+          ]
+        }
+      } else {
+        // For omnibox, use text-based responses
+        return showDetails
+          ? formatDetailedTaskList(tasks, context)
+          : formatSimpleTaskList(tasks, context)
+      }
 
     } catch (error) {
+      console.error('[TasksCommand] Error fetching tasks:', error)
       return CommandExecutor.createErrorResponse(
         error instanceof Error ? error.message : 'Failed to fetch tasks',
-        'TASK_FETCH_ERROR'
+        'TASK_FETCH_ERROR',
+        'Try refreshing or check your connection'
       )
     }
   }
@@ -358,16 +463,93 @@ export const newTaskCommand: CommandDefinition = {
       const description = params.description
       const activate = params.activate !== false
 
-      if (!name) {
+      // Validate task name if provided
+      if (name && typeof name !== 'string') {
         return CommandExecutor.createErrorResponse(
-          'Task name is required',
-          'MISSING_PARAMETER',
-          'Provide a task name: /newtask "Task Name"'
+          'Task name must be text',
+          'INVALID_PARAMETER',
+          'Provide a valid task name'
         )
       }
 
+      if (name && name.length > 100) {
+        return CommandExecutor.createErrorResponse(
+          'Task name too long',
+          'INVALID_PARAMETER',
+          'Task name must be 100 characters or less'
+        )
+      }
+
+      if (description && typeof description !== 'string') {
+        return CommandExecutor.createErrorResponse(
+          'Task description must be text',
+          'INVALID_PARAMETER',
+          'Provide a valid description'
+        )
+      }
+
+      if (description && description.length > 500) {
+        return CommandExecutor.createErrorResponse(
+          'Task description too long',
+          'INVALID_PARAMETER',
+          'Description must be 500 characters or less'
+        )
+      }
+
+      // If no name provided, show task creator form
+      if (!name) {
+        if (context.source === 'chatbox') {
+          try {
+            // Return component-based task creator for chat interface
+            const existingTasks = await getTasks({ status: 'all', limit: 100, context })
+
+            return {
+              success: true,
+              type: 'task-creator',
+              content: 'Create a new task',
+              componentData: {
+                tasks: existingTasks,
+                showExisting: true
+              },
+              actions: [
+                {
+                  id: 'cancel-create',
+                  label: 'Cancel',
+                  type: 'command',
+                  action: '/tasks',
+                  style: 'secondary'
+                }
+              ]
+            }
+          } catch (taskError) {
+            console.error('[NewTaskCommand] Error fetching existing tasks:', taskError)
+            return CommandExecutor.createErrorResponse(
+              'Failed to load task creator',
+              'COMPONENT_ERROR',
+              'Try using: /newtask "Task Name"'
+            )
+          }
+        } else {
+          return CommandExecutor.createErrorResponse(
+            'Task name is required',
+            'MISSING_PARAMETER',
+            'Provide a task name: /newtask "Task Name"'
+          )
+        }
+      }
+
       // Create the task
-      const task = await createTask({ name, description, context })
+      let task
+      try {
+        task = await createTask({ name, description, context })
+      } catch (createError) {
+        console.error('[NewTaskCommand] Error creating task:', createError)
+        return CommandExecutor.createErrorResponse(
+          'Failed to create task',
+          'TASK_CREATE_ERROR',
+          'Check task name and try again'
+        )
+      }
 
       let responseMessage = `✅ Created task: ${name}`
 
@@ -394,9 +576,11 @@ export const newTaskCommand: CommandDefinition = {
       return response
 
     } catch (error) {
+      console.error('[NewTaskCommand] Unexpected error:', error)
       return CommandExecutor.createErrorResponse(
         error instanceof Error ? error.message : 'Failed to create task',
-        'TASK_CREATE_ERROR'
+        'TASK_CREATE_ERROR',
+        'Check task name and try again'
       )
     }
   }
@@ -462,9 +646,61 @@ async function getTasks(options: {
 }): Promise<any[]> {
   // This would integrate with the actual task service
   const mockTasks = [
-    { id: '1', name: 'work-project', description: 'Main work project', status: 'active' },
-    { id: '2', name: 'personal-tasks', description: 'Personal task management', status: 'active' },
-    { id: '3', name: 'research-phase', description: 'Research and analysis', status: 'completed' }
+    {
+      id: '1',
+      name: 'work-project',
+      description: 'Main work project',
+      status: 'active',
+      isActive: true,
+      pageCount: 12,
+      noteCount: 8,
+      createdAt: new Date('2024-01-15'),
+      lastActivity: new Date('2024-01-20')
+    },
+    {
+      id: '2',
+      name: 'personal-tasks',
+      description: 'Personal task management',
+      status: 'active',
+      isActive: false,
+      pageCount: 7,
+      noteCount: 3,
+      createdAt: new Date('2024-01-10'),
+      lastActivity: new Date('2024-01-18')
+    },
+    {
+      id: '3',
+      name: 'research-phase',
+      description: 'Research and analysis',
+      status: 'completed',
+      isActive: false,
+      pageCount: 25,
+      noteCount: 15,
+      createdAt: new Date('2023-12-01'),
+      lastActivity: new Date('2024-01-05')
+    },
+    {
+      id: '4',
+      name: 'documentation',
+      description: 'Project documentation and guides',
+      status: 'active',
+      isActive: false,
+      pageCount: 18,
+      noteCount: 22,
+      createdAt: new Date('2024-01-12'),
+      lastActivity: new Date('2024-01-19')
+    },
+    {
+      id: '5',
+      name: 'learning-ai',
+      description: 'AI and machine learning resources',
+      status: 'active',
+      isActive: false,
+      pageCount: 31,
+      noteCount: 9,
+      createdAt: new Date('2023-11-20'),
+      lastActivity: new Date('2024-01-16')
+    }
   ]
 
   let filtered = mockTasks
@@ -542,9 +778,405 @@ function formatDetailedTaskList(tasks: any[], context: CommandContext): CommandR
   })
 }
 
+// This function is no longer needed as the logic is now inline in the tasks command
+
+
+
+/**
+ * /find command - Universal search across tasks, pages, notes, and documents
+ *
+ * Usage:
+ *   /find <query>
+ *   /find --query="search term" [--type=tasks|pages|notes|docs|all] [--limit=20]
+ */
+export const findCommand: CommandDefinition = {
+  name: 'find',
+  aliases: ['search', 'lookup'],
+  description: 'Search across tasks, pages, notes, and documents',
+  category: 'search',
+  parameters: [
+    {
+      name: 'query',
+      type: 'string',
+      required: false, // Can be positional or named
+      description: 'Search query',
+      validation: {
+        minLength: 1,
+        maxLength: 200
+      }
+    },
+    {
+      name: 'type',
+      type: 'string',
+      required: false,
+      description: 'What to search: tasks, pages, notes, docs, or all',
+      validation: {
+        allowedValues: ['tasks', 'pages', 'notes', 'docs', 'documents', 'all']
+      },
+      defaultValue: 'all'
+    },
+    {
+      name: 'limit',
+      type: 'number',
+      required: false,
+      description: 'Maximum number of results to show per type',
+      defaultValue: 20,
+      validation: {
+        customValidator: async (value: number) => {
+          if (value < 1 || value > 100) {
+            return { isValid: false, error: 'Limit must be between 1 and 100' }
+          }
+          return { isValid: true }
+        }
+      }
+    }
+  ],
+  examples: [
+    '/find "project planning"',
+    '/find --query="meeting" --type=tasks',
+    '/find --type=docs --limit=10',
+    '/search api documentation',
+    '/lookup "user interface"'
+  ],
+
+  async execute(params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> {
+    try {
+      const query = params._positional[0] || params.query
+      const searchType = params.type || 'all'
+      const limit = params.limit || 20
+
+      // Validate search parameters
+      if (query && typeof query !== 'string') {
+        return CommandExecutor.createErrorResponse(
+          'Search query must be text',
+          'INVALID_PARAMETER',
+          'Provide a valid search query'
+        )
+      }
+
+      if (query && query.length > 200) {
+        return CommandExecutor.createErrorResponse(
+          'Search query too long',
+          'INVALID_PARAMETER',
+          'Query must be 200 characters or less'
+        )
+      }
+
+      if (limit < 1 || limit > 100) {
+        return CommandExecutor.createErrorResponse(
+          'Limit must be between 1 and 100',
+          'INVALID_PARAMETER',
+          'Use a limit between 1 and 100'
+        )
+      }
+
+      if (!query) {
+        // No query provided - show search interface for chat
+        if (context.source === 'chatbox') {
+          return {
+            success: true,
+            type: 'search-interface',
+            content: 'Find across tasks, pages, notes, and documents',
+            componentData: {
+              query: '',
+              searchType: 'all',
+              results: [],
+              interactive: true
+            },
+            actions: [
+              {
+                id: 'search-tasks',
+                label: 'Find Tasks',
+                type: 'command',
+                action: '/find --type=tasks',
+                style: 'secondary'
+              },
+              {
+                id: 'search-pages',
+                label: 'Find Pages',
+                type: 'command',
+                action: '/find --type=pages',
+                style: 'secondary'
+              },
+              {
+                id: 'search-docs',
+                label: 'Find Documents',
+                type: 'command',
+                action: '/find --type=docs',
+                style: 'secondary'
+              }
+            ]
+          }
+        } else {
+          return CommandExecutor.createErrorResponse(
+            'Search query is required',
+            'MISSING_PARAMETER',
+            'Provide a search query: /find "query"'
+          )
+        }
+      }
+
+      // Perform the search
+      let results
+      try {
+        results = await performUniversalSearch({ query, type: searchType, limit, context })
+      } catch (searchError) {
+        console.error('[FindCommand] Search error:', searchError)
+        return CommandExecutor.createErrorResponse(
+          'Search failed',
+          'SEARCH_ERROR',
+          'Try a different query or check your connection'
+        )
+      }
+
+      const totalResults = results.tasks.length + results.pages.length + results.notes.length + results.documents.length
+
+      if (totalResults === 0) {
+        return CommandExecutor.createSuccessResponse('text',
+          `No results found for "${query}"`,
+          {
+            followUp: ['/find --type=all', '/tasks', '/save'],
+            actions: [
+              {
+                id: 'try-broader',
+                label: 'Try Different Search',
+                type: 'command',
+                action: '/find ',
+                style: 'secondary'
+              }
+            ]
+          }
+        )
+      }
+
+      // For chat interface with task results, return task component
+      if (context.source === 'chatbox' && results.tasks.length > 0 && (searchType === 'tasks' || (searchType === 'all' && results.tasks.length >= results.pages.length))) {
+        return {
+          success: true,
+          type: 'task-list',
+          content: `Found ${results.tasks.length} task(s) matching "${query}"`,
+          componentData: {
+            tasks: results.tasks,
+            interactive: true,
+            filters: {
+              search: query,
+              status: 'all'
+            }
+          },
+          actions: [
+            {
+              id: 'search-all',
+              label: 'Search All Types',
+              type: 'command',
+              action: `/find "${query}" --type=all`,
+              style: 'secondary'
+            },
+            {
+              id: 'refine-search',
+              label: 'New Search',
+              type: 'command',
+              action: '/find ',
+              style: 'secondary'
+            }
+          ]
+        }
+      }
+
+      // Generate comprehensive text response for all content types
+      let responseText = `Found ${totalResults} result(s) for "${query}":\n\n`
+
+      if (results.tasks.length > 0) {
+        responseText += `**📋 Tasks (${results.tasks.length}):**\n`
+        results.tasks.slice(0, 5).forEach(task => {
+          responseText += `• ${task.name}${task.description ? ` - ${task.description}` : ''}\n`
+        })
+        if (results.tasks.length > 5) {
+          responseText += `  ... and ${results.tasks.length - 5} more tasks\n`
+        }
+        responseText += '\n'
+      }
+
+      if (results.pages.length > 0) {
+        responseText += `**🌐 Pages (${results.pages.length}):**\n`
+        results.pages.slice(0, 5).forEach(page => {
+          responseText += `• ${page.title || page.url}\n`
+        })
+        if (results.pages.length > 5) {
+          responseText += `  ... and ${results.pages.length - 5} more pages\n`
+        }
+        responseText += '\n'
+      }
+
+      if (results.notes.length > 0) {
+        responseText += `**📝 Notes (${results.notes.length}):**\n`
+        results.notes.slice(0, 3).forEach(note => {
+          const preview = note.content.slice(0, 50) + (note.content.length > 50 ? '...' : '')
+          responseText += `• ${preview}\n`
+        })
+        if (results.notes.length > 3) {
+          responseText += `  ... and ${results.notes.length - 3} more notes\n`
+        }
+        responseText += '\n'
+      }
+
+      if (results.documents.length > 0) {
+        responseText += `**📄 Documents (${results.documents.length}):**\n`
+        results.documents.slice(0, 3).forEach(doc => {
+          responseText += `• ${doc.title || doc.filename}\n`
+        })
+        if (results.documents.length > 3) {
+          responseText += `  ... and ${results.documents.length - 3} more documents\n`
+        }
+      }
+
+      const actions = []
+      if (results.tasks.length > 0) {
+        actions.push({
+          id: 'tasks-only',
+          label: 'Tasks Only',
+          type: 'command',
+          action: `/find "${query}" --type=tasks`,
+          style: 'secondary'
+        })
+      }
+      if (results.pages.length > 0) {
+        actions.push({
+          id: 'pages-only',
+          label: 'Pages Only',
+          type: 'command',
+          action: `/find "${query}" --type=pages`,
+          style: 'secondary'
+        })
+      }
+
+      return CommandExecutor.createSuccessResponse('text', responseText.trim(), {
+        actions: actions.slice(0, 2) // Limit to 2 actions to avoid clutter
+      })
+
+    } catch (error) {
+      console.error('[FindCommand] Unexpected error:', error)
+      return CommandExecutor.createErrorResponse(
+        error instanceof Error ? error.message : 'Search failed',
+        'SEARCH_ERROR',
+        'Try refreshing or check your connection'
+      )
+    }
+  }
+}
+
+// Universal search function that searches across all content types
+async function performUniversalSearch(options: {
+  query: string
+  type: string
+  limit: number
+  context: CommandContext
+}): Promise<{ tasks: any[], pages: any[], notes: any[], documents: any[] }> {
+  const { query, type, limit } = options
+
+  // Mock implementation - in real app, this would call the actual search service
+  const mockTasks = [
+    {
+      id: '1',
+      name: 'project planning',
+      description: 'Plan the new project',
+      status: 'active',
+      isActive: false,
+      pageCount: 8,
+      noteCount: 5,
+      createdAt: new Date('2024-01-10')
+    },
+    {
+      id: '2',
+      name: 'meeting notes',
+      description: 'Weekly team meeting',
+      status: 'active',
+      isActive: true,
+      pageCount: 15,
+      noteCount: 12,
+      createdAt: new Date('2024-01-05')
+    },
+    {
+      id: '3',
+      name: 'documentation review',
+      description: 'Review project docs',
+      status: 'completed',
+      isActive: false,
+      pageCount: 22,
+      noteCount: 8,
+      createdAt: new Date('2023-12-15')
+    },
+    {
+      id: '4',
+      name: 'api documentation',
+      description: 'Document API endpoints',
+      status: 'active',
+      isActive: false,
+      pageCount: 35,
+      noteCount: 18,
+      createdAt: new Date('2024-01-08')
+    }
+  ]
+
+  const mockPages = [
+    { id: '1', title: 'Project Planning Guide', url: 'https://example.com/planning' },
+    { id: '2', title: 'Meeting Template', url: 'https://example.com/template' },
+    { id: '3', title: 'API Documentation Portal', url: 'https://docs.example.com/api' },
+    { id: '4', title: 'User Interface Guidelines', url: 'https://design.example.com/ui' }
+  ]
+
+  const mockNotes = [
+    { id: '1', content: 'Important project planning considerations and next steps...' },
+    { id: '2', content: 'Meeting action items and follow-up tasks for the team...' },
+    { id: '3', content: 'User interface feedback and improvement suggestions...' }
+  ]
+
+  const mockDocuments = [
+    { id: '1', title: 'Project Specification', filename: 'project-spec.pdf', type: 'pdf' },
+    { id: '2', title: 'API Reference Guide', filename: 'api-guide.docx', type: 'docx' },
+    { id: '3', title: 'User Interface Mockups', filename: 'ui-mockups.figma', type: 'figma' }
+  ]
+
+  const queryLower = query.toLowerCase()
+
+  let tasks: any[] = []
+  let pages: any[] = []
+  let notes: any[] = []
+  let documents: any[] = []
+
+  if (type === 'tasks' || type === 'all') {
+    tasks = mockTasks.filter(task =>
+      task.name.toLowerCase().includes(queryLower) ||
+      (task.description && task.description.toLowerCase().includes(queryLower))
+    ).slice(0, limit)
+  }
+
+  if (type === 'pages' || type === 'all') {
+    pages = mockPages.filter(page =>
+      page.title.toLowerCase().includes(queryLower) ||
+      page.url.toLowerCase().includes(queryLower)
+    ).slice(0, limit)
+  }
+
+  if (type === 'notes' || type === 'all') {
+    notes = mockNotes.filter(note =>
+      note.content.toLowerCase().includes(queryLower)
+    ).slice(0, limit)
+  }
+
+  if (type === 'docs' || type === 'documents' || type === 'all') {
+    documents = mockDocuments.filter(doc =>
+      doc.title.toLowerCase().includes(queryLower) ||
+      doc.filename.toLowerCase().includes(queryLower)
+    ).slice(0, limit)
+  }
+
+  return { tasks, pages, notes, documents }
+}
+
 // Export all task commands
 export const taskCommands = [
   setTaskCommand,
   tasksCommand,
-  newTaskCommand
+  newTaskCommand,
+  findCommand
 ]
