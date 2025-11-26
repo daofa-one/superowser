@@ -10,7 +10,7 @@ import {
 } from '../../shared/commands/types'
 import { CommandExecutor } from '../../shared/commands/executor'
 import { AI_MESSAGE_TYPES } from '../../shared/messaging/ai-types'
-import { handleAIRunPrompt } from '../index'
+import { handleAIRunPrompt } from '../handlers/ai-automation-handler'
 
 export class IntegratedCommandService extends CommandService {
   constructor(private container: DIContainer) {

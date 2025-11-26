@@ -4,13 +4,23 @@ import {
   PageEntry,
   NoteEntry,
   TaskEntry,
+  DocumentEntry,
+  DocumentVersionEntry,
+  SearchContextEntry,
   SavePageRequest,
   SaveNoteRequest,
+  SaveDocumentRequest,
+  SaveDocumentVersionRequest,
   SearchResult,
   SearchQuery,
   UserSettings
 } from '../../shared/models'
-import { AIRunPromptRequest } from '../../shared/messaging/ai-types'
+import {
+  AIRunPromptRequest,
+  AIAutomationSettings,
+  AISelectors,
+  AI_MESSAGE_TYPES
+} from '../../shared/messaging/ai-types'
 
 // Base message structure
 export interface BaseMessage {
@@ -31,6 +41,7 @@ export interface SaveCurrentTabMessage extends BaseMessage {
     shortcut?: string
     tasks?: string[]
     closeAfterSave?: boolean
+    searchContext?: SearchContextEntry
   }
 }
 
@@ -203,10 +214,112 @@ export interface DeleteNoteMessage extends BaseMessage {
   data: { id: string }
 }
 
+export interface ExtensionChatMessage extends BaseMessage {
+  type: 'EXTENSION_CHAT'
+  data: {
+    content: string
+    command?: string
+    relatedTask?: string
+  }
+}
+
+export interface GetDocumentMessage extends BaseMessage {
+  type: 'GET_DOCUMENT'
+  data: { documentId: string; versionLimit?: number }
+}
+
+export interface CreateDocumentMessage extends BaseMessage {
+  type: 'CREATE_DOCUMENT'
+  data: SaveDocumentRequest
+}
+
+export interface UpdateDocumentMessage extends BaseMessage {
+  type: 'UPDATE_DOCUMENT'
+  data: { documentId: string; updates: Partial<DocumentEntry> }
+}
+
+export interface DeleteDocumentMessage extends BaseMessage {
+  type: 'DELETE_DOCUMENT'
+  data: { documentId: string }
+}
+
+export interface SaveDocumentVersionMessage extends BaseMessage {
+  type: 'SAVE_DOCUMENT_VERSION'
+  data: SaveDocumentVersionRequest
+}
+
+export interface DeleteDocumentVersionMessage extends BaseMessage {
+  type: 'DELETE_DOCUMENT_VERSION'
+  data: { versionId: string }
+}
+
+export interface UpdateDocumentVersionMessage extends BaseMessage {
+  type: 'UPDATE_DOCUMENT_VERSION'
+  data: { versionId: string; updates: Partial<DocumentVersionEntry> }
+}
+
+export interface DuplicateDocumentVersionMessage extends BaseMessage {
+  type: 'DUPLICATE_DOCUMENT_VERSION'
+  data: { versionId: string; options?: Partial<DocumentVersionEntry> }
+}
+
+export interface GetTaskDocumentsMessage extends BaseMessage {
+  type: 'GET_TASK_DOCUMENTS'
+  data: { taskId: string }
+}
+
+export interface GetTaskMessage extends BaseMessage {
+  type: 'GET_TASK'
+  data: { taskId: string }
+}
+
+export interface GetTaskPagesMessage extends BaseMessage {
+  type: 'GET_TASK_PAGES'
+  data: { taskId: string }
+}
+
+export interface GetTaskNotesMessage extends BaseMessage {
+  type: 'GET_TASK_NOTES'
+  data: { taskId: string }
+}
+
+export interface OpenAuthoringWorkspaceMessage extends BaseMessage {
+  type: 'OPEN_AUTHORING_WORKSPACE'
+  data: { documentId: string; taskId?: string }
+}
+
 // AI message types
 export interface AIRunPromptMessage extends BaseMessage {
   type: 'AI_RUN_PROMPT'
   data: AIRunPromptRequest
+}
+
+export interface AIGetSettingsMessage extends BaseMessage {
+  type: typeof AI_MESSAGE_TYPES.AI_GET_SETTINGS
+}
+
+export interface AIUpdateSettingsMessage extends BaseMessage {
+  type: typeof AI_MESSAGE_TYPES.AI_UPDATE_SETTINGS
+  data: Partial<AIAutomationSettings>
+}
+
+export interface AIUpdateSelectorsMessage extends BaseMessage {
+  type: typeof AI_MESSAGE_TYPES.AI_UPDATE_SELECTORS
+  data: { provider: AIAutomationSettings['provider']; selectors: Partial<AISelectors> }
+}
+
+export interface AITestSelectorsMessage extends BaseMessage {
+  type: typeof AI_MESSAGE_TYPES.AI_TEST_SELECTORS
+  data: { provider: AIAutomationSettings['provider']; selectors: AISelectors }
+}
+
+export interface AITestAutomationMessage extends BaseMessage {
+  type: 'AI_TEST_AUTOMATION'
+  data?: { prompt?: string }
+}
+
+export interface AITestInjectionMessage extends BaseMessage {
+  type: 'AI_TEST_INJECTION'
 }
 
 // Union type for all request messages
@@ -247,7 +360,27 @@ export type RequestMessage =
   | GetAllNotesMessage
   | UpdateNoteMessage
   | DeleteNoteMessage
+  | ExtensionChatMessage
+  | GetDocumentMessage
+  | CreateDocumentMessage
+  | UpdateDocumentMessage
+  | DeleteDocumentMessage
+  | SaveDocumentVersionMessage
+  | DeleteDocumentVersionMessage
+  | UpdateDocumentVersionMessage
+  | DuplicateDocumentVersionMessage
+  | GetTaskDocumentsMessage
+  | GetTaskMessage
+  | GetTaskPagesMessage
+  | GetTaskNotesMessage
+  | OpenAuthoringWorkspaceMessage
   | AIRunPromptMessage
+  | AIGetSettingsMessage
+  | AIUpdateSettingsMessage
+  | AIUpdateSelectorsMessage
+  | AITestSelectorsMessage
+  | AITestAutomationMessage
+  | AITestInjectionMessage
 
 // Response messages from background to side panel
 export interface SuccessResponse<T = any> extends BaseMessage {

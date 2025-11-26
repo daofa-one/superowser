@@ -4,12 +4,18 @@
       v-for="shortcut in visibleShortcuts"
       :key="shortcut.id"
       class="shortcut-btn"
-      :class="{ 'context-active': shortcut.contextActive }"
-      :title="shortcut.description || shortcut.command"
-      @click="executeShortcut(shortcut)"
+      :class="{
+        'context-active': shortcut.contextActive,
+        'shift-held': isShiftHeld
+      }"
+      :title="getButtonTitle(shortcut)"
+      @click="executeShortcut(shortcut, $event)"
+      @mousedown="handleMouseDown"
+      @mouseup="handleMouseUp"
     >
       <span class="shortcut-icon">{{ shortcut.icon }}</span>
       <span class="shortcut-label">{{ shortcut.label }}</span>
+      <span v-if="isShiftHeld && shortcut.autoExecute" class="shift-indicator">⌨️</span>
     </button>
 
     <!-- Customize button -->
@@ -20,7 +26,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { ChatShortcut } from './shortcuts-config'
 
 interface Props {
@@ -29,7 +35,7 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'shortcut-executed', shortcut: ChatShortcut): void
+  (e: 'shortcut-executed', shortcut: ChatShortcut, options: { autoExecute: boolean }): void
   (e: 'customize'): void
 }
 
@@ -39,6 +45,31 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<Emits>()
 
+// Track shift key state globally
+const isShiftHeld = ref(false)
+
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (event.key === 'Shift') {
+    isShiftHeld.value = true
+  }
+}
+
+const handleKeyUp = (event: KeyboardEvent) => {
+  if (event.key === 'Shift') {
+    isShiftHeld.value = false
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('keyup', handleKeyUp)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('keyup', handleKeyUp)
+})
+
 // Only show enabled shortcuts, sorted by position
 const visibleShortcuts = computed(() => {
   return props.shortcuts
@@ -47,8 +78,41 @@ const visibleShortcuts = computed(() => {
     .slice(0, props.maxVisible)
 })
 
-const executeShortcut = (shortcut: ChatShortcut) => {
-  emit('shortcut-executed', shortcut)
+const getButtonTitle = (shortcut: ChatShortcut): string => {
+  const baseTitle = shortcut.description || shortcut.command
+  if (shortcut.autoExecute) {
+    return `${baseTitle}\n\nShift+Click to add parameters`
+  }
+  return baseTitle
+}
+
+const handleMouseDown = (event: MouseEvent) => {
+  // Update shift state on mouse down to ensure it's current
+  if (event.shiftKey) {
+    isShiftHeld.value = true
+  }
+}
+
+const handleMouseUp = (event: MouseEvent) => {
+  // Reset shift state if not held during mouse up
+  if (!event.shiftKey) {
+    isShiftHeld.value = false
+  }
+}
+
+const executeShortcut = (shortcut: ChatShortcut, event: MouseEvent) => {
+  console.log('[TaskShortcuts] Clicked:', shortcut.id, 'shiftKey:', event?.shiftKey, 'isShiftHeld:', isShiftHeld.value)
+
+  // If Shift key is held (check both event and our tracked state), always just fill input (don't auto-execute)
+  const forceInputMode = event?.shiftKey || isShiftHeld.value || false
+
+  // Determine if we should auto-execute:
+  // - Not if shift key is held
+  // - Yes if shortcut.autoExecute is true
+  const shouldAutoExecute = !forceInputMode && (shortcut.autoExecute ?? false)
+
+  console.log('[TaskShortcuts] Emitting with autoExecute:', shouldAutoExecute, 'forceInputMode:', forceInputMode)
+  emit('shortcut-executed', shortcut, { autoExecute: shouldAutoExecute })
 }
 </script>
 
@@ -97,6 +161,19 @@ const executeShortcut = (shortcut: ChatShortcut) => {
   border-color: #10b981;
   background: #ecfdf5;
   color: #10b981;
+}
+
+.shortcut-btn.shift-held {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  color: #d97706;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}
+
+.shift-indicator {
+  font-size: 10px;
+  margin-left: 2px;
+  opacity: 0.8;
 }
 
 .shortcut-customize {

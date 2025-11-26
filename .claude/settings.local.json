@@ -20,7 +20,11 @@
       "WebSearch",
       "Bash(find:*)",
       "WebFetch(domain:chatgpt.com)",
-      "Bash(pnpm dev:*)"
+      "Bash(pnpm dev:*)",
+      "Bash(tree:*)",
+      "Bash(pnpm typecheck:*)",
+      "SlashCommand(/test)",
+      "Bash(pnpm test:*)"
     ],
     "deny": [],
     "ask": []

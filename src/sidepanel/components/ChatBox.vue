@@ -33,6 +33,9 @@ const suggestions = ref<CommandSuggestion[]>([])
 const highlightedIndex = ref(-1)
 let suggestionRequestId = 0
 
+// Flag to prevent auto-submission after shortcut fills input
+const justFilledFromShortcut = ref(false)
+
 const showSaveAiModal = ref(false)
 const aiDraftContent = ref('')
 const aiDraftIncludeCurrentTask = ref(false)
@@ -260,10 +263,24 @@ const fetchSuggestions = async (input: string) => {
   }
 }
 
-watch(inputValue, (value) => {
+watch(inputValue, (value, oldValue) => {
+  console.log('[ChatBox] ========== inputValue changed ==========')
+  console.log('[ChatBox] Old value:', JSON.stringify(oldValue))
+  console.log('[ChatBox] New value:', JSON.stringify(value))
+  console.log('[ChatBox] justFilledFromShortcut:', justFilledFromShortcut.value)
+
+  // Don't trigger autocomplete if we just filled from a shortcut
+  if (justFilledFromShortcut.value) {
+    console.log('[ChatBox] Blocked - just filled from shortcut, skipping ALL processing')
+    // Don't do anything - just wait for the flag to be cleared by the timeout
+    return
+  }
+
   if (value.trim().startsWith('/')) {
+    console.log('[ChatBox] Calling fetchSuggestions')
     fetchSuggestions(value)
   } else {
+    console.log('[ChatBox] Clearing suggestions')
     clearSuggestions()
   }
 })
@@ -309,9 +326,11 @@ const handleKeydown = (event: KeyboardEvent) => {
 
   if (event.key === 'Enter' && !event.shiftKey) {
     if (suggestions.value.length > 0 && highlightedIndex.value >= 0) {
+      // Fill input from autocomplete, don't execute
       event.preventDefault()
-      applySuggestion(suggestions.value[highlightedIndex.value], true)
+      applySuggestion(suggestions.value[highlightedIndex.value], false)
     } else {
+      // No autocomplete active - send the message
       event.preventDefault()
       void sendMessage()
     }
@@ -319,11 +338,23 @@ const handleKeydown = (event: KeyboardEvent) => {
 }
 
 const sendMessage = async () => {
-  const content = inputValue.value.trim()
-  if (!content || isSending.value) {
+  console.log('[ChatBox] ========== sendMessage called ==========')
+  console.trace('[ChatBox] Call stack for sendMessage')
+
+  // GUARD: Don't execute if we just filled from a shortcut
+  if (justFilledFromShortcut.value) {
+    console.log('[ChatBox] ❌ BLOCKED - sendMessage called while justFilledFromShortcut is true')
+    console.log('[ChatBox] This prevents auto-execution after Shift+Click')
     return
   }
 
+  const content = inputValue.value.trim()
+  if (!content || isSending.value) {
+    console.log('[ChatBox] sendMessage aborted - empty or already sending')
+    return
+  }
+
+  console.log('[ChatBox] ✅ Sending message:', content)
   isSending.value = true
   try {
     await store.sendExtensionChat(content)
@@ -566,18 +597,64 @@ const handleTaskViewDetails = async (task: any) => {
 }
 
 // Shortcut event handlers
-const handleShortcutExecuted = (shortcut: any) => {
-  console.log('Shortcut executed:', shortcut)
-  // Fill the input with the shortcut command
-  inputValue.value = shortcut.command + ' '
-  nextTick(() => {
-    textareaRef.value?.focus()
-    // Position cursor at the end
-    const textarea = textareaRef.value
-    if (textarea) {
-      textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+const handleShortcutExecuted = async (shortcut: any, options?: { autoExecute: boolean }) => {
+  console.log('[ChatBox] ========== handleShortcutExecuted ==========')
+  console.log('[ChatBox] shortcut.id:', shortcut?.id)
+  console.log('[ChatBox] shortcut.command:', shortcut?.command)
+  console.log('[ChatBox] options:', JSON.stringify(options))
+  console.log('[ChatBox] typeof options:', typeof options)
+  console.log('[ChatBox] options?.autoExecute:', options?.autoExecute)
+
+  // Default to NOT auto-executing if options is missing
+  const shouldAutoExecute = options?.autoExecute === true
+
+  console.log('[ChatBox] Final decision - shouldAutoExecute:', shouldAutoExecute)
+
+  if (shouldAutoExecute) {
+    console.log('[ChatBox] AUTO-EXECUTING command:', shortcut.command)
+    // Execute command immediately with current values
+    try {
+      await store.sendExtensionChat(shortcut.command.trim())
+      // Optionally scroll to show the result
+      setTimeout(() => {
+        scrollToBottom()
+      }, 100)
+    } catch (error) {
+      console.error('[ChatBox] Auto-execute failed:', error)
+      store.addNotification({
+        type: 'error',
+        message: 'Failed to execute command. Try again with parameters.'
+      })
+      // Fall back to input mode
+      inputValue.value = shortcut.command + ' '
+      nextTick(() => {
+        textareaRef.value?.focus()
+      })
     }
-  })
+  } else {
+    console.log('[ChatBox] FILLING INPUT with command:', shortcut.command)
+
+    // Set flag to prevent auto-submission
+    justFilledFromShortcut.value = true
+
+    // Fill the input with the shortcut command for user to add parameters
+    inputValue.value = shortcut.command + ' '
+
+    nextTick(() => {
+      textareaRef.value?.focus()
+      // Position cursor at the end
+      const textarea = textareaRef.value
+      if (textarea) {
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+      }
+
+      // Clear the flag after a short delay to allow normal autocomplete
+      setTimeout(() => {
+        justFilledFromShortcut.value = false
+        console.log('[ChatBox] Re-enabling autocomplete')
+      }, 100)
+    })
+  }
 }
 
 const handleShortcutCustomize = () => {
@@ -812,7 +889,7 @@ const handleTaskCreatorCancel = () => {
       <!-- Command shortcuts -->
       <TaskShortcuts
         :shortcuts="userShortcuts"
-        @shortcut-executed="handleShortcutExecuted"
+        @shortcut-executed="(shortcut, options) => handleShortcutExecuted(shortcut, options)"
         @customize="handleShortcutCustomize"
       />
       <div v-if="suggestions.length > 0" class="suggestions">

@@ -9,7 +9,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint . --fix --ext js,mjs,cjs,ts,mts,cts,vue",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "pnpm typecheck && pnpm lint && pnpm build",
+    "typecheck": "npx vue-tsc --noEmit"
   },
   "dependencies": {
     "@guolao/vue-monaco-editor": "^1.5.5",
