@@ -48,12 +48,34 @@ class SearchService implements ISearchService {
 
     const normalized = query.query.trim().toLowerCase()
     const terms = normalized.split(/\s+/).filter(Boolean)
+    const searchType = query.type || 'all'
 
-    const [pageMatches, noteMatches, taskMatches] = await Promise.all([
-      this.pageService.search(normalized),
-      this.noteService.search(normalized),
-      this.taskService.getAll()
-    ])
+    // Determine which types to search based on the type parameter
+    const searchPages = searchType === 'all' || searchType === 'page'
+    const searchNotes = searchType === 'all' || searchType === 'note'
+    const searchTasks = searchType === 'all' || searchType === 'task'
+
+    const searchPromises: Promise<any[]>[] = []
+
+    if (searchPages) {
+      searchPromises.push(this.pageService.search(normalized))
+    } else {
+      searchPromises.push(Promise.resolve([]))
+    }
+
+    if (searchNotes) {
+      searchPromises.push(this.noteService.search(normalized))
+    } else {
+      searchPromises.push(Promise.resolve([]))
+    }
+
+    if (searchTasks) {
+      searchPromises.push(this.taskService.getAll())
+    } else {
+      searchPromises.push(Promise.resolve([]))
+    }
+
+    const [pageMatches, noteMatches, taskMatches] = await Promise.all(searchPromises)
 
     const pageResults = pageMatches.map(page => {
       const title = (page.title || '').toLowerCase()
