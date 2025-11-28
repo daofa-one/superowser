@@ -305,13 +305,14 @@ async function handleMessage(message: RequestMessage, container: DIContainer): P
       case 'GET_COMMAND_SUGGESTIONS':
         try {
           const input = message.data?.input ?? ''
-          if (typeof input === 'string' && input.trim().startsWith('/')) {
+          const cursorPosition = message.data?.cursorPosition ?? input.length
+          if (typeof input === 'string' && input.startsWith('/')) {
             const commandContext = container.commandService.createContext('chatbox', {
               activeTask: container.analyticsService.getCurrentContext().activeTask,
               recentTags: container.analyticsService.getCurrentContext().recentTags
             })
 
-            data = await container.commandService.getSuggestions(input.trim(), commandContext)
+            data = await container.commandService.getSuggestions(input, commandContext, cursorPosition)
           } else {
             data = []
           }

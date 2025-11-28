@@ -45,14 +45,14 @@ export const DEFAULT_SHORTCUTS: ChatShortcut[] = [
     requiresInput: false
   },
   {
-    id: 'note',
-    label: 'Note',
+    id: 'notes',
+    label: 'Notes',
     icon: '📝',
-    command: '/note',
+    command: '/notes',
     position: 2,
     enabled: true,
-    description: 'Create a note',
-    autoExecute: false, // Needs note content from user
+    description: 'Show notes by task, tag, or search',
+    autoExecute: false, // Needs search parameters from user
     requiresInput: true
   },
   {

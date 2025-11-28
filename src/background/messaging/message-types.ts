@@ -130,6 +130,7 @@ export interface GetCommandSuggestionsMessage extends BaseMessage {
   type: 'GET_COMMAND_SUGGESTIONS'
   data: {
     input: string
+    cursorPosition?: number
   }
 }
 

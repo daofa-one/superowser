@@ -33,6 +33,9 @@ const suggestions = ref<CommandSuggestion[]>([])
 const highlightedIndex = ref(-1)
 let suggestionRequestId = 0
 
+// Track cursor position for position-aware autocomplete
+const cursorPosition = ref(0)
+
 // Flag to prevent auto-submission after shortcut fills input
 const justFilledFromShortcut = ref(false)
 
@@ -233,9 +236,15 @@ const clearSuggestions = () => {
   highlightedIndex.value = -1
 }
 
+const handleCursorChange = () => {
+  if (textareaRef.value) {
+    cursorPosition.value = textareaRef.value.selectionStart || 0
+  }
+}
+
 const fetchSuggestions = async (input: string) => {
-  const trimmed = input.trim()
-  if (!trimmed.startsWith('/')) {
+  // Don't trim - we need to preserve spaces for parameter detection
+  if (!input.startsWith('/')) {
     clearSuggestions()
     return
   }
@@ -244,7 +253,10 @@ const fetchSuggestions = async (input: string) => {
   try {
     const response = await store.sendMessage({
       type: 'GET_COMMAND_SUGGESTIONS',
-      data: { input: trimmed }
+      data: {
+        input: input,
+        cursorPosition: cursorPosition.value
+      }
     })
 
     if (requestId !== suggestionRequestId) {
@@ -276,9 +288,13 @@ watch(inputValue, (value, oldValue) => {
     return
   }
 
-  if (value.trim().startsWith('/')) {
+  if (value.startsWith('/')) {
     console.log('[ChatBox] Calling fetchSuggestions')
-    fetchSuggestions(value)
+    // Update cursor position before fetching (wait for DOM to update)
+    nextTick(() => {
+      handleCursorChange()
+      fetchSuggestions(value)
+    })
   } else {
     console.log('[ChatBox] Clearing suggestions')
     clearSuggestions()
@@ -290,7 +306,37 @@ const applySuggestion = (suggestion: CommandSuggestion, triggerSend = false) => 
   if (!text) {
     return
   }
-  inputValue.value = text
+
+  // For parameter and value suggestions, we need to smartly insert/replace
+  if (suggestion.type === 'parameter' || suggestion.type === 'value') {
+    const currentInput = inputValue.value
+    const cursor = cursorPosition.value
+
+    // Find where the current parameter/value starts
+    // Look backwards from cursor to find the start of the current token
+    let tokenStart = cursor
+    while (tokenStart > 0 && !/\s/.test(currentInput[tokenStart - 1])) {
+      tokenStart--
+    }
+
+    // Replace from tokenStart to cursor with the suggestion text
+    const before = currentInput.substring(0, tokenStart)
+    const after = currentInput.substring(cursor)
+    inputValue.value = before + text + after
+
+    // Position cursor at the end of the inserted text
+    nextTick(() => {
+      const newCursorPos = tokenStart + text.length
+      if (textareaRef.value) {
+        textareaRef.value.setSelectionRange(newCursorPos, newCursorPos)
+        cursorPosition.value = newCursorPos
+      }
+    })
+  } else {
+    // For command suggestions, replace entire input
+    inputValue.value = text
+  }
+
   clearSuggestions()
   textareaRef.value?.focus()
 
@@ -914,6 +960,8 @@ const handleTaskCreatorCancel = () => {
         rows="3"
         :disabled="isSending"
         @keydown="handleKeydown"
+        @click="handleCursorChange"
+        @keyup="handleCursorChange"
       />
       <div class="input-actions">
         <span class="hint">Enter to send · Shift+Enter for newline · Tab to complete</span>

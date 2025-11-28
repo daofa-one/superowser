@@ -31,6 +31,9 @@ export class IntegratedCommandService extends CommandService {
     registry.unregister('settask')
     registry.unregister('tasks')
     registry.unregister('newtask')
+    registry.unregister('find')
+    registry.unregister('search')
+    registry.unregister('lookup')
     registry.unregister('help')
     registry.unregister('?')
     registry.unregister('commands')
@@ -44,6 +47,7 @@ export class IntegratedCommandService extends CommandService {
       { name: 'tasks', factory: () => this.createIntegratedTasksCommand() },
       { name: 'newtask', factory: () => this.createIntegratedNewTaskCommand() },
       { name: 'search', factory: () => this.createIntegratedSearchCommand() },
+      { name: 'find', factory: () => this.createIntegratedFindCommand() },
       { name: 'ai', factory: () => this.createIntegratedAiCommand() },
       { name: 'save', factory: () => this.createIntegratedSaveCommand() },
       { name: 'open', factory: () => this.createIntegratedOpenCommand() },
@@ -181,6 +185,191 @@ export class IntegratedCommandService extends CommandService {
         return CommandExecutor.createSuccessResponse('text', confirmation, {
           followUp: [`/search --engine=${engineKey} ${query} site:`, '/search <new query>']
         })
+      }
+    }
+  }
+
+  private createIntegratedFindCommand(): CommandDefinition {
+    return {
+      name: 'find',
+      aliases: ['lookup', 'locate'],
+      description: 'Search saved pages, notes, tasks, and documents using fuzzy matching',
+      category: 'search',
+      parameters: [
+        {
+          name: 'query',
+          type: 'string',
+          required: false,
+          description: 'Search query (supports Fuse.js extended search syntax)'
+        },
+        {
+          name: 'type',
+          type: 'string',
+          required: false,
+          description: 'Filter by type: page, note, task, all (default: all)',
+          validation: {
+            allowedValues: ['page', 'pages', 'note', 'notes', 'task', 'tasks', 'all']
+          }
+        },
+        {
+          name: 'limit',
+          type: 'number',
+          required: false,
+          description: 'Maximum number of results (default 10, max 100)',
+          defaultValue: 10
+        }
+      ],
+      examples: [
+        '/find react hooks',
+        '/find --type=page authentication',
+        '/find --query="machine learning" --limit=20',
+        '/lookup api documentation'
+      ],
+      minParameters: 0,
+
+      execute: async (params: ResolvedParameters, context: CommandContext): Promise<CommandResponse> => {
+        try {
+          // Extract query from positional parameters or named parameter
+          const queryTokens = params._positional.length > 0
+            ? params._positional
+            : (params.query ? [params.query as string] : [])
+
+          const query = queryTokens.join(' ').trim()
+          const typeParam = (params.type as string | undefined)?.toLowerCase()
+          const rawLimit = typeof params.limit === 'number' ? params.limit : undefined
+          const limit = Math.min(Math.max(rawLimit ?? 10, 1), 100)
+
+          // Normalize type parameter
+          const typeMap: Record<string, 'page' | 'note' | 'task' | 'all'> = {
+            'page': 'page',
+            'pages': 'page',
+            'note': 'note',
+            'notes': 'note',
+            'task': 'task',
+            'tasks': 'task',
+            'all': 'all'
+          }
+          const searchType = typeParam ? typeMap[typeParam] || 'all' : 'all'
+
+          if (!query || query.length === 0) {
+            return CommandExecutor.createErrorResponse(
+              'Search query is required',
+              'MISSING_PARAMETER',
+              'Usage: /find <query> [--type=page|note|task|all] [--limit=10]'
+            )
+          }
+
+          if (query.length > 200) {
+            return CommandExecutor.createErrorResponse(
+              'Search query too long',
+              'INVALID_PARAMETER',
+              'Query must be 200 characters or less'
+            )
+          }
+
+          // Perform search using the actual search service
+          const searchQuery = {
+            query,
+            type: searchType,
+            limit
+          }
+
+          const results = await this.container.searchService.search(searchQuery)
+
+          if (results.length === 0) {
+            const typeFilter = searchType !== 'all' ? ` (${searchType}s only)` : ''
+            const message = `🔍 No results found for "${query}"${typeFilter}`
+
+            if (context.source === 'omnibox') {
+              return CommandExecutor.createNavigationResponse('chat', message)
+            }
+
+            return CommandExecutor.createSuccessResponse('text', message, {
+              followUp: ['/find <different query>', '/tasks']
+            })
+          }
+
+          // Group results by type
+          const groupedResults: Record<string, any[]> = {
+            page: [],
+            note: [],
+            task: [],
+            document: []
+          }
+
+          results.forEach(result => {
+            const type = result.type || 'page'
+            if (!groupedResults[type]) {
+              groupedResults[type] = []
+            }
+            groupedResults[type].push(result)
+          })
+
+          // Format results
+          let responseText = `🔍 Found ${results.length} result(s) for "${query}":\n\n`
+
+          if (groupedResults.task.length > 0) {
+            responseText += `**📋 Tasks (${groupedResults.task.length}):**\n`
+            groupedResults.task.slice(0, 5).forEach(task => {
+              const snippet = task.snippet || task.description || ''
+              responseText += `• ${task.title}${snippet ? ` - ${snippet}` : ''}\n`
+            })
+            if (groupedResults.task.length > 5) {
+              responseText += `  ... and ${groupedResults.task.length - 5} more\n`
+            }
+            responseText += '\n'
+          }
+
+          if (groupedResults.page.length > 0) {
+            responseText += `**📄 Pages (${groupedResults.page.length}):**\n`
+            groupedResults.page.slice(0, 5).forEach(page => {
+              const tagsStr = page.tags?.length ? ` #${page.tags.join(' #')}` : ''
+              const shortcutStr = page.shortcut ? ` @${page.shortcut}` : ''
+              responseText += `• ${page.title}${tagsStr}${shortcutStr}\n  ${page.snippet || page.url || ''}\n`
+            })
+            if (groupedResults.page.length > 5) {
+              responseText += `  ... and ${groupedResults.page.length - 5} more\n`
+            }
+            responseText += '\n'
+          }
+
+          if (groupedResults.note.length > 0) {
+            responseText += `**📝 Notes (${groupedResults.note.length}):**\n`
+            groupedResults.note.slice(0, 5).forEach(note => {
+              const preview = (note.snippet || note.content || '').substring(0, 100)
+              responseText += `• ${preview}${preview.length >= 100 ? '...' : ''}\n`
+            })
+            if (groupedResults.note.length > 5) {
+              responseText += `  ... and ${groupedResults.note.length - 5} more\n`
+            }
+            responseText += '\n'
+          }
+
+          if (groupedResults.document && groupedResults.document.length > 0) {
+            responseText += `**📁 Documents (${groupedResults.document.length}):**\n`
+            groupedResults.document.slice(0, 5).forEach(doc => {
+              responseText += `• ${doc.title}${doc.snippet ? ` - ${doc.snippet}` : ''}\n`
+            })
+            if (groupedResults.document.length > 5) {
+              responseText += `  ... and ${groupedResults.document.length - 5} more\n`
+            }
+          }
+
+          if (context.source === 'omnibox') {
+            return CommandExecutor.createNavigationResponse('chat', responseText.trim())
+          }
+
+          return CommandExecutor.createSuccessResponse('text', responseText.trim(), {
+            followUp: ['/find <refine search>', '/open @<shortcut>']
+          })
+        } catch (error) {
+          console.error('[/find] Search failed:', error)
+          return CommandExecutor.createErrorResponse(
+            'Search operation failed',
+            'FIND_SEARCH_FAILED',
+            error instanceof Error ? error.message : 'Please try again or check your search query'
+          )
+        }
       }
     }
   }
@@ -406,19 +595,64 @@ export class IntegratedCommandService extends CommandService {
           name: 'tags',
           type: 'string',
           required: false,
-          description: 'Comma-separated tags for the page'
+          description: 'Comma-separated tags for the page',
+          autocomplete: async (partial: string) => {
+            try {
+              const pages = await this.container.pageService.getAll()
+              const tagSet = new Set<string>()
+              pages.forEach(page => {
+                page.tags?.forEach(tag => tagSet.add(tag))
+              })
+              const tags = Array.from(tagSet)
+              return tags
+                .filter(tag => tag.toLowerCase().includes(partial.toLowerCase()))
+                .sort()
+                .slice(0, 10)
+            } catch (error) {
+              console.error('[/save autocomplete] Failed to fetch tags:', error)
+              return []
+            }
+          }
         },
         {
           name: 'task',
           type: 'string',
           required: false,
-          description: 'Task to associate with the page'
+          description: 'Task to associate with the page',
+          autocomplete: async (partial: string) => {
+            try {
+              const tasks = await this.container.taskService.getAll()
+              return tasks
+                .map(task => task.name)
+                .filter(name => name.toLowerCase().includes(partial.toLowerCase()))
+                .sort()
+                .slice(0, 10)
+            } catch (error) {
+              console.error('[/save autocomplete] Failed to fetch tasks:', error)
+              return []
+            }
+          }
         },
         {
           name: 'shortcut',
           type: 'string',
           required: false,
-          description: 'Shortcut name for quick access (@shortcut)'
+          description: 'Shortcut name for quick access (@shortcut)',
+          autocomplete: async (partial: string) => {
+            try {
+              const pages = await this.container.pageService.getAll()
+              const shortcuts = pages
+                .map(page => page.shortcut)
+                .filter((shortcut): shortcut is string => !!shortcut)
+              return Array.from(new Set(shortcuts))
+                .filter(shortcut => shortcut.toLowerCase().includes(partial.toLowerCase()))
+                .sort()
+                .slice(0, 10)
+            } catch (error) {
+              console.error('[/save autocomplete] Failed to fetch shortcuts:', error)
+              return []
+            }
+          }
         }
       ],
       examples: [

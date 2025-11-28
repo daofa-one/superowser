@@ -178,37 +178,119 @@ export class CommandParser {
     this.position = 0
     this.tokens = []
 
-    // Tokenize up to cursor position
-    while (this.position < cursorPosition && this.position < this.input.length) {
-      this.skipWhitespace()
-
-      if (this.position >= cursorPosition) break
-
-      // Simplified tokenization for autocomplete
-      const char = this.input[this.position]
-
-      if (char === '/' && this.tokens.length === 0) {
-        this.position++
-        const identifier = this.readIdentifier()
-        this.addToken('COMMAND', identifier)
-      } else if (char === '-' && this.peek() === '-') {
-        this.position += 2
-        const name = this.readIdentifier()
-        this.addToken('NAMED_PARAM', name)
-      } else {
-        const value = this.readParameterValue()
-        if (value) {
-          this.addToken('PARAMETER', value)
-        }
+    // Tokenize the entire input
+    try {
+      this.tokenize()
+    } catch {
+      // If tokenization fails, provide minimal context
+      return {
+        currentToken: { type: 'EOF', value: '', position: 0, length: 0 },
+        previousTokens: [],
+        commandSoFar: input.substring(0, cursorPosition),
+        cursorPosition,
+        availableCommands: [],
+        commandName: '',
+        isInParameterName: false,
+        isInParameterValue: false
       }
     }
 
+    // Find the token containing the cursor or the last token before cursor
+    let currentTokenIndex = -1
+    for (let i = 0; i < this.tokens.length; i++) {
+      const token = this.tokens[i]
+      const tokenEnd = token.position + token.length
+
+      if (cursorPosition >= token.position && cursorPosition <= tokenEnd) {
+        currentTokenIndex = i
+        break
+      } else if (cursorPosition < token.position) {
+        // Cursor is before this token, use previous token
+        currentTokenIndex = Math.max(0, i - 1)
+        break
+      }
+    }
+
+    // If cursor is after all tokens, use EOF token if it exists
+    if (currentTokenIndex === -1) {
+      const eofIndex = this.tokens.findIndex(t => t.type === 'EOF')
+      if (eofIndex >= 0) {
+        currentTokenIndex = eofIndex
+      } else {
+        currentTokenIndex = this.tokens.length - 1
+      }
+    }
+
+    const currentToken = this.tokens[currentTokenIndex] || { type: 'EOF', value: '', position: 0, length: 0 }
+    const previousTokens = this.tokens.slice(0, currentTokenIndex)
+
+    // Extract command name
+    const commandToken = this.tokens.find(t => t.type === 'COMMAND')
+    const commandName = commandToken?.value || ''
+
+    // Determine if we're in parameter name or value
+    let isInParameterName = false
+    let isInParameterValue = false
+    let parameterName: string | undefined
+
+    // Check if cursor is right after "--" (typing parameter name)
+    const textBeforeCursor = input.substring(0, cursorPosition)
+    const endsWithDashDash = textBeforeCursor.trimEnd().endsWith('--')
+
+    if (currentToken.type === 'NAMED_PARAM') {
+      // Check if the token has "=" to determine if it's a parameter with value
+      if (currentToken.value.includes('=')) {
+        const [name, value] = currentToken.value.split('=', 2)
+        const equalsPos = input.indexOf('=', currentToken.position)
+
+        if (cursorPosition <= equalsPos) {
+          // Cursor is before or at "=", so in parameter name
+          isInParameterName = true
+          parameterName = name
+        } else {
+          // Cursor is after "=", so in parameter value
+          isInParameterValue = true
+          parameterName = name
+        }
+      } else {
+        // No "=" yet, we're typing the parameter name
+        isInParameterName = true
+        parameterName = currentToken.value
+      }
+    } else if (currentToken.type === 'FLAG') {
+      isInParameterName = true
+      parameterName = currentToken.value
+    } else if (endsWithDashDash || (currentToken.type === 'EOF' && textBeforeCursor.trimEnd().endsWith('--'))) {
+      // Just typed "--", ready to suggest parameter names
+      isInParameterName = true
+    } else if (currentToken.type === 'PARAMETER') {
+      // Check if previous token is NAMED_PARAM with "="
+      const prevToken = previousTokens[previousTokens.length - 1]
+      if (prevToken?.type === 'NAMED_PARAM' && prevToken.value.includes('=')) {
+        const [name] = prevToken.value.split('=', 2)
+        isInParameterValue = true
+        parameterName = name
+      }
+    }
+
+    // Check if we're right after a space following the command (ready for parameters)
+    const afterCommand = commandToken && cursorPosition > (commandToken.position + commandToken.length) &&
+                        /\s/.test(input[commandToken.position + commandToken.length] || '')
+    if (afterCommand && !isInParameterName && !isInParameterValue && currentToken.type === 'EOF') {
+      // We're in the position to start typing a parameter
+      isInParameterName = true
+    }
+
     return {
-      currentToken: this.tokens[this.tokens.length - 1] || { type: 'EOF', value: '', position: 0, length: 0 },
-      previousTokens: this.tokens.slice(0, -1),
+      currentToken,
+      previousTokens,
       commandSoFar: input.substring(0, cursorPosition),
       cursorPosition,
-      availableCommands: [] // Will be populated by command registry
+      availableCommands: [],
+      commandName,
+      isInParameterName,
+      isInParameterValue,
+      parameterName
     }
   }
 

@@ -18,6 +18,8 @@ export class CommandRegistry {
   private aliases: Map<string, string> = new Map()
   private categories: Map<string, CommandDefinition[]> = new Map()
   private usageStats: Map<string, { count: number; lastUsed: Date }> = new Map()
+  private autocompleteCache: Map<string, { values: string[]; timestamp: number }> = new Map()
+  private readonly CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
   /**
    * Register a new command
@@ -410,9 +412,130 @@ export class CommandRegistry {
     context: CommandContext,
     autocompleteContext?: AutocompleteContext
   ): Promise<CommandSuggestion[]> {
-    // This is a simplified implementation
-    // Full implementation would parse current command and suggest appropriate parameters
-    return []
+    console.log('[Registry] getParameterSuggestions called with:', {
+      input,
+      autocompleteContext
+    })
+
+    if (!autocompleteContext) {
+      console.log('[Registry] No autocompleteContext, returning empty')
+      return []
+    }
+
+    const { commandName, isInParameterName, isInParameterValue, parameterName, currentToken } = autocompleteContext
+
+    console.log('[Registry] Context:', {
+      commandName,
+      isInParameterName,
+      isInParameterValue,
+      parameterName,
+      currentToken
+    })
+
+    if (!commandName) {
+      console.log('[Registry] No commandName, returning empty')
+      return []
+    }
+
+    // Get the command definition
+    const command = this.getCommand(commandName)
+    if (!command) {
+      console.log('[Registry] Command not found:', commandName)
+      return []
+    }
+
+    console.log('[Registry] Found command:', command.name, 'with', command.parameters.length, 'parameters')
+
+    const suggestions: CommandSuggestion[] = []
+
+    // Case 1: Typing parameter name (after "--")
+    if (isInParameterName && !isInParameterValue) {
+      const partial = parameterName || ''
+      console.log('[Registry] Case 1: Typing parameter name, partial:', JSON.stringify(partial))
+
+      for (const paramDef of command.parameters) {
+        // Filter by partial match
+        if (paramDef.name.toLowerCase().includes(partial.toLowerCase())) {
+          console.log('[Registry] Adding suggestion for parameter:', paramDef.name)
+          suggestions.push({
+            type: 'parameter',
+            text: `--${paramDef.name}=`,
+            display: `--${paramDef.name}`,
+            description: `${paramDef.description} (${paramDef.type}${paramDef.required ? ', required' : ''})`,
+            confidence: paramDef.name.toLowerCase().startsWith(partial.toLowerCase()) ? 0.9 : 0.7,
+            category: 'parameter',
+            icon: '🔧'
+          })
+        } else {
+          console.log('[Registry] Skipping parameter (no match):', paramDef.name)
+        }
+      }
+    } else {
+      console.log('[Registry] Not in parameter name context:', {
+        isInParameterName,
+        isInParameterValue
+      })
+    }
+
+    // Case 2: Typing parameter value (after "=")
+    if (isInParameterValue && parameterName) {
+      // Find the parameter definition
+      const paramDef = command.parameters.find(p => p.name === parameterName)
+      if (paramDef && paramDef.autocomplete) {
+        try {
+          // Get current partial value from the token
+          const partial = currentToken.type === 'NAMED_PARAM'
+            ? currentToken.value.split('=')[1] || ''
+            : currentToken.value
+
+          // Check cache first
+          const cacheKey = `${commandName}:${parameterName}:${partial}`
+          const cached = this.autocompleteCache.get(cacheKey)
+          const now = Date.now()
+
+          let values: string[]
+          if (cached && (now - cached.timestamp) < this.CACHE_TTL) {
+            values = cached.values
+          } else {
+            // Fetch from autocomplete callback
+            values = await paramDef.autocomplete(partial, context)
+            // Cache the results
+            this.autocompleteCache.set(cacheKey, { values, timestamp: now })
+          }
+
+          // Convert to suggestions
+          for (const value of values.slice(0, 10)) { // Limit to 10 results
+            suggestions.push({
+              type: 'value',
+              text: `--${parameterName}=${value}`,
+              display: value,
+              description: `${paramDef.description}`,
+              confidence: value.toLowerCase().startsWith(partial.toLowerCase()) ? 0.9 : 0.7,
+              category: 'value',
+              icon: this.getParameterTypeIcon(paramDef.type)
+            })
+          }
+        } catch (error) {
+          console.error(`[CommandRegistry] Autocomplete error for ${commandName}.${parameterName}:`, error)
+        }
+      }
+    }
+
+    return suggestions
+  }
+
+  private getParameterTypeIcon(type: string): string {
+    const icons: Record<string, string> = {
+      string: '📝',
+      number: '🔢',
+      boolean: '✓',
+      task: '📋',
+      tag: '🏷️',
+      page: '📄',
+      url: '🔗',
+      date: '📅'
+    }
+    return icons[type] || '⚙️'
   }
 
   private calculateCommandRelevance(

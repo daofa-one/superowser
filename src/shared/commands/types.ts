@@ -246,4 +246,8 @@ export interface AutocompleteContext {
   commandSoFar: string
   cursorPosition: number
   availableCommands: string[]
+  commandName: string
+  isInParameterName: boolean
+  isInParameterValue: boolean
+  parameterName?: string
 }
