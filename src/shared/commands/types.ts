@@ -111,8 +111,32 @@ export interface ComponentData {
   notes?: any[]
   documents?: any[]
   refresh?: string
+  searchResults?: {
+    query: string
+    totalCount: number
+    groups: {
+      pages?: SearchResultItem[]
+      notes?: SearchResultItem[]
+      tasks?: SearchResultItem[]
+      documents?: SearchResultItem[]
+    }
+  }
   // Future component data types can be added here
   [key: string]: any
+}
+
+export interface SearchResultItem {
+  id: string
+  type: 'page' | 'note' | 'task' | 'document'
+  title: string
+  url?: string
+  snippet?: string
+  tags?: string[]
+  shortcut?: string
+  tasks?: string[]
+  score?: number
+  createdAt?: Date
+  favicon?: string
 }
 
 export interface CommandResponse {
@@ -141,6 +165,9 @@ export type ResponseType =
   | 'task-list'      // Interactive task list component
   | 'task-creator'   // Task creation form component
   | 'task-detail'    // Task detail component
+  | 'search-results' // Search results with clickable URLs
+  | 'page-results'   // Page-specific results
+  | 'note-results'   // Note-specific results
 
 export interface ResponseMetadata {
   executionTime: number

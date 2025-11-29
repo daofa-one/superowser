@@ -7,13 +7,14 @@ import type { NoteCategory } from '../../shared/models'
 import TaskList from './task/TaskList.vue'
 import TaskCreator from './task/TaskCreator.vue'
 import TaskShortcuts from './task/TaskShortcuts.vue'
+import SearchResultList from './search/SearchResultList.vue'
 import { DEFAULT_SHORTCUTS } from './task/shortcuts-config'
 
 type ChatHistoryEntry = (BrowserChatMessage | ExtensionChatMessage) & { timestamp: Date }
 
 interface ChatBubble {
   id: string
-  type: 'user-command' | 'system-response' | 'user-message' | 'browser-message' | 'task-list' | 'task-creator'
+  type: 'user-command' | 'system-response' | 'user-message' | 'browser-message' | 'task-list' | 'task-creator' | 'search-results'
   content: string
   timestamp: Date
   command?: string
@@ -642,6 +643,33 @@ const handleTaskViewDetails = async (task: any) => {
   await runChatCommand(parts.join(' '))
 }
 
+// Search result component event handlers
+const handlePageOpen = (url: string, pageId: string) => {
+  console.log('[ChatBox] Page opened:', url, pageId)
+  store.addNotification({
+    type: 'success',
+    message: 'Page opened in new tab'
+  })
+}
+
+const handleNoteView = (noteId: string) => {
+  console.log('[ChatBox] Note view requested:', noteId)
+  // Future: Navigate to note detail view
+  store.addNotification({
+    type: 'info',
+    message: 'Note details view - coming soon'
+  })
+}
+
+const handleDocumentOpen = (documentId: string) => {
+  console.log('[ChatBox] Document open requested:', documentId)
+  // Future: Open document in editor
+  store.addNotification({
+    type: 'info',
+    message: 'Document editor - coming soon'
+  })
+}
+
 // Shortcut event handlers
 const handleShortcutExecuted = async (shortcut: any, options?: { autoExecute: boolean }) => {
   console.log('[ChatBox] ========== handleShortcutExecuted ==========')
@@ -920,6 +948,47 @@ const handleTaskCreatorCancel = () => {
               />
             </div>
 
+            <!-- Search results component with error boundary -->
+            <div v-else-if="bubble.type === 'search-results'" class="component-bubble">
+              <div v-if="componentErrors.has(`search-results-${bubble.id}`)" class="component-error">
+                <div class="error-content">
+                  <span class="error-icon">⚠️</span>
+                  <div class="error-text">
+                    <p class="error-title">Search Results Error</p>
+                    <p class="error-message">{{ componentErrors.get(`search-results-${bubble.id}`) }}</p>
+                  </div>
+                  <div class="error-actions">
+                    <button
+                      type="button"
+                      class="error-retry"
+                      :disabled="(retryAttempts.get(`search-results-${bubble.id}`) || 0) >= MAX_RETRY_ATTEMPTS"
+                      @click="retryComponent(`search-results-${bubble.id}`)"
+                    >
+                      Retry
+                    </button>
+                    <button
+                      type="button"
+                      class="error-dismiss"
+                      @click="clearComponentError(`search-results-${bubble.id}`)"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <SearchResultList
+                v-else
+                :key="`search-results-${bubble.id}-${retryAttempts.get(`search-results-${bubble.id}`) || 0}`"
+                :query="bubble.componentData?.searchResults?.query || ''"
+                :results="bubble.componentData?.searchResults?.groups || {}"
+                :interactive="true"
+                @page-open="handlePageOpen"
+                @note-view="handleNoteView"
+                @task-activate="handleTaskActivated"
+                @document-open="handleDocumentOpen"
+                @result-click="(item) => console.log('[ChatBox] Result clicked:', item)"
+              />
+            </div>
 
             <!-- Fallback for unknown types -->
             <div v-else>

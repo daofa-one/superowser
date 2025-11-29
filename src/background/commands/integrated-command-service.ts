@@ -305,6 +305,49 @@ export class IntegratedCommandService extends CommandService {
             groupedResults[type].push(result)
           })
 
+          // Transform to SearchResultItem format for component rendering
+          const componentResults = {
+            query,
+            totalCount: results.length,
+            groups: {
+              pages: groupedResults.page.map(r => ({
+                id: r.id,
+                type: 'page' as const,
+                title: r.title,
+                url: r.snippet || r.url, // Use snippet as URL for pages
+                snippet: r.snippet,
+                tags: r.tags || [],
+                shortcut: r.shortcut,
+                tasks: r.tasks || [],
+                score: r.score,
+                favicon: r.favicon
+              })),
+              notes: groupedResults.note.map(r => ({
+                id: r.id,
+                type: 'note' as const,
+                title: r.title,
+                snippet: r.snippet || r.content,
+                tags: r.tags || [],
+                tasks: r.tasks || [],
+                score: r.score
+              })),
+              tasks: groupedResults.task.map(r => ({
+                id: r.id,
+                type: 'task' as const,
+                title: r.title,
+                snippet: r.snippet || r.description,
+                score: r.score
+              })),
+              documents: groupedResults.document?.map(r => ({
+                id: r.id,
+                type: 'document' as const,
+                title: r.title,
+                snippet: r.snippet,
+                score: r.score
+              })) || []
+            }
+          }
+
           // Format results
           let responseText = `🔍 Found ${results.length} result(s) for "${query}":\n\n`
 
@@ -359,6 +402,20 @@ export class IntegratedCommandService extends CommandService {
             return CommandExecutor.createNavigationResponse('chat', responseText.trim())
           }
 
+          // Return component-based response for chatbox with clickable URLs
+          if (context.source === 'chatbox') {
+            return {
+              success: true,
+              type: 'search-results' as const,
+              content: responseText.trim(), // Keep text fallback
+              componentData: {
+                searchResults: componentResults
+              },
+              followUp: ['/find <refine search>', '/open @<shortcut>']
+            }
+          }
+
+          // Fallback to text response
           return CommandExecutor.createSuccessResponse('text', responseText.trim(), {
             followUp: ['/find <refine search>', '/open @<shortcut>']
           })

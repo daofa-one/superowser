@@ -363,7 +363,7 @@ async function handleMessage(message: RequestMessage, container: DIContainer): P
             }
 
             // Check if this is a component-based response
-            const isComponentResponse = displayResponse.type === 'task-list' || displayResponse.type === 'task-creator'
+            const isComponentResponse = displayResponse.type === 'task-list' || displayResponse.type === 'task-creator' || displayResponse.type === 'search-results'
 
             if (isComponentResponse) {
               // For component responses, store the component data
