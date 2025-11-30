@@ -11,6 +11,7 @@ import {
 import { CommandExecutor } from '../../shared/commands/executor'
 import { AI_MESSAGE_TYPES } from '../../shared/messaging/ai-types'
 import { handleAIRunPrompt } from '../handlers/ai-automation-handler'
+import { focusOrOpenUrl } from '../utils/url-utils'
 
 export class IntegratedCommandService extends CommandService {
   constructor(private container: DIContainer) {
@@ -150,7 +151,7 @@ export class IntegratedCommandService extends CommandService {
           }
 
           if (!reusedExistingTab) {
-            const createdTab = await chrome.tabs.create({ url })
+            const createdTab = await focusOrOpenUrl(url)
             if (createdTab?.id != null) {
               tabInfo = { tabId: createdTab.id, windowId: createdTab.windowId }
             }
@@ -825,7 +826,7 @@ export class IntegratedCommandService extends CommandService {
           }
 
           // Open the page
-          await chrome.tabs.create({ url: page.url })
+          await focusOrOpenUrl(page.url)
 
           return CommandExecutor.createSuccessResponse('text',
             `✅ Opened: ${page.title}`,
