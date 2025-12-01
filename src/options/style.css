@@ -302,3 +302,347 @@ code {
     color: #93c5fd;
   }
 }
+
+/* Shortcut Button Customization Styles */
+.shortcut-config {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 12px 0;
+  background: #f8fafc;
+  transition: all 0.2s ease;
+}
+
+.shortcut-config:hover {
+  border-color: #cbd5e1;
+  background: #ffffff;
+}
+
+.shortcut-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.shortcut-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.shortcut-enabled-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.shortcut-enabled-toggle input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: #1d4ed8;
+  cursor: pointer;
+}
+
+.shortcut-fields {
+  display: grid;
+  gap: 14px;
+  padding-left: 4px;
+}
+
+.shortcut-fields .field {
+  gap: 6px;
+}
+
+.shortcut-fields .field-control {
+  width: 100%;
+  max-width: 100%;
+}
+
+.shortcut-fields .field-toggle {
+  padding: 8px 0;
+}
+
+/* Dark mode for shortcuts */
+@media (prefers-color-scheme: dark) {
+  .shortcut-config {
+    background: #0f172a;
+    border-color: rgba(148, 163, 184, 0.25);
+  }
+
+  .shortcut-config:hover {
+    border-color: rgba(148, 163, 184, 0.4);
+    background: #1e293b;
+  }
+
+  .shortcut-header {
+    border-bottom-color: rgba(148, 163, 184, 0.25);
+  }
+
+  .shortcut-header h3 {
+    color: #f1f5f9;
+  }
+
+  .shortcut-enabled-toggle {
+    color: #94a3b8;
+  }
+}
+
+/* Custom Buttons Styles */
+.add-button {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 2px dashed #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin: 12px 0;
+}
+
+.add-button:hover {
+  border-color: #1d4ed8;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.custom-button-form {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 16px 0;
+  background: #ffffff;
+}
+
+.custom-button-form h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.custom-buttons-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.custom-button-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  background: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.custom-button-card:hover {
+  border-color: #cbd5e1;
+  background: #ffffff;
+}
+
+.custom-button-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.custom-button-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.custom-button-icon {
+  font-size: 18px;
+}
+
+.custom-button-label {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.custom-button-details {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.custom-button-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-button, .delete-button {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.edit-button {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+}
+
+.edit-button:hover {
+  border-color: #1d4ed8;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.delete-button {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.delete-button:hover {
+  border-color: #dc2626;
+  background: #fee2e2;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.save-button, .cancel-button {
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.save-button {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.save-button:hover {
+  background: #1e40af;
+  border-color: #1e40af;
+}
+
+.cancel-button {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+}
+
+.cancel-button:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+/* Dark mode for custom buttons */
+@media (prefers-color-scheme: dark) {
+  .add-button {
+    background: #0f172a;
+    border-color: rgba(148, 163, 184, 0.3);
+    color: #94a3b8;
+  }
+
+  .add-button:hover {
+    border-color: #3b82f6;
+    background: #1e293b;
+    color: #60a5fa;
+  }
+
+  .custom-button-form {
+    background: #0f172a;
+    border-color: rgba(148, 163, 184, 0.25);
+  }
+
+  .custom-button-form h3 {
+    color: #f1f5f9;
+  }
+
+  .custom-button-card {
+    background: #0f172a;
+    border-color: rgba(148, 163, 184, 0.25);
+  }
+
+  .custom-button-card:hover {
+    border-color: rgba(148, 163, 184, 0.4);
+    background: #1e293b;
+  }
+
+  .custom-button-label {
+    color: #f1f5f9;
+  }
+
+  .custom-button-details {
+    color: #94a3b8;
+  }
+
+  .edit-button {
+    background: #1e293b;
+    border-color: rgba(148, 163, 184, 0.3);
+    color: #94a3b8;
+  }
+
+  .edit-button:hover {
+    border-color: #3b82f6;
+    background: #1e3a8a;
+    color: #60a5fa;
+  }
+
+  .delete-button {
+    background: #450a0a;
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #f87171;
+  }
+
+  .delete-button:hover {
+    border-color: #ef4444;
+    background: #7f1d1d;
+  }
+
+  .form-actions {
+    border-top-color: rgba(148, 163, 184, 0.25);
+  }
+
+  .save-button {
+    background: #1e40af;
+    border-color: #1e40af;
+  }
+
+  .save-button:hover {
+    background: #1e3a8a;
+    border-color: #1e3a8a;
+  }
+
+  .cancel-button {
+    background: #1e293b;
+    border-color: rgba(148, 163, 184, 0.3);
+    color: #94a3b8;
+  }
+
+  .cancel-button:hover {
+    border-color: rgba(148, 163, 184, 0.5);
+    background: #0f172a;
+  }
+}

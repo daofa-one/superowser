@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch, onErrorCaptured } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, onErrorCaptured } from 'vue'
 import { useSidePanelStore } from '../stores/sidepanel-store'
 import type { BrowserChatMessage, ExtensionChatMessage } from '../stores/sidepanel-store'
 import type { CommandSuggestion, ComponentData } from '../../shared/commands/types'
@@ -226,10 +226,75 @@ watch(messages, async () => {
   scrollToBottom()
 }, { deep: true })
 
-onMounted(() => {
+// Function to load shortcuts from settings
+const loadShortcuts = (settings: any) => {
+  const userConfigs = settings?.shortcuts || {}
+  const customButtons = settings?.customButtons || []
+
+  // Merge user configs with defaults
+  const defaultShortcuts = DEFAULT_SHORTCUTS.map(shortcut => ({
+    ...shortcut,
+    command: userConfigs[shortcut.id]?.command || shortcut.command,
+    parameters: userConfigs[shortcut.id]?.parameters || '',
+    autoExecute: userConfigs[shortcut.id]?.autoExecute !== undefined
+      ? userConfigs[shortcut.id]?.autoExecute
+      : shortcut.autoExecute,
+    enabled: userConfigs[shortcut.id]?.enabled !== undefined
+      ? userConfigs[shortcut.id]?.enabled
+      : shortcut.enabled
+  })).filter(s => s.enabled)
+
+  // Convert custom buttons to shortcut format
+  const customShortcuts = customButtons
+    .sort((a: any, b: any) => a.position - b.position)
+    .map((btn: any) => ({
+      id: btn.id,
+      label: btn.label,
+      icon: btn.icon,
+      command: btn.command,
+      parameters: btn.parameters || '',
+      description: `Custom: ${btn.command}`,
+      position: 100 + btn.position, // Position after defaults
+      enabled: true,
+      contextActive: false,
+      autoExecute: btn.autoExecute,
+      requiresInput: false
+    }))
+
+  // Combine default and custom shortcuts
+  userShortcuts.value = [...defaultShortcuts, ...customShortcuts]
+}
+
+// Listen for settings updates from background
+const handleSettingsUpdate = (message: any) => {
+  if (message.type === 'STATE_UPDATE' && message.path === 'user.settings') {
+    console.log('[ChatBox] Settings updated, reloading shortcuts')
+    loadShortcuts(message.value)
+  }
+}
+
+onMounted(async () => {
   nextTick(() => {
     scrollToBottom()
   })
+
+  // Load user shortcut settings
+  try {
+    const settings = await store.sendMessage({ type: 'GET_USER_SETTINGS' })
+    loadShortcuts(settings)
+  } catch (error) {
+    console.error('[ChatBox] Failed to load shortcut settings:', error)
+    // Keep defaults if loading fails
+    userShortcuts.value = DEFAULT_SHORTCUTS
+  }
+
+  // Add listener for settings updates
+  chrome.runtime.onMessage.addListener(handleSettingsUpdate)
+})
+
+onUnmounted(() => {
+  // Remove listener when component is destroyed
+  chrome.runtime.onMessage.removeListener(handleSettingsUpdate)
 })
 
 const clearSuggestions = () => {
@@ -675,20 +740,28 @@ const handleShortcutExecuted = async (shortcut: any, options?: { autoExecute: bo
   console.log('[ChatBox] ========== handleShortcutExecuted ==========')
   console.log('[ChatBox] shortcut.id:', shortcut?.id)
   console.log('[ChatBox] shortcut.command:', shortcut?.command)
+  console.log('[ChatBox] shortcut.parameters:', shortcut?.parameters)
   console.log('[ChatBox] options:', JSON.stringify(options))
   console.log('[ChatBox] typeof options:', typeof options)
   console.log('[ChatBox] options?.autoExecute:', options?.autoExecute)
 
-  // Default to NOT auto-executing if options is missing
-  const shouldAutoExecute = options?.autoExecute === true
+  // Determine if we should auto-execute based on options or shortcut.autoExecute
+  const shouldAutoExecute = options?.autoExecute === true || shortcut.autoExecute
 
   console.log('[ChatBox] Final decision - shouldAutoExecute:', shouldAutoExecute)
 
+  // Append parameters if configured
+  const fullCommand = shortcut.parameters
+    ? `${shortcut.command} ${shortcut.parameters}`.trim()
+    : shortcut.command
+
+  console.log('[ChatBox] Full command with parameters:', fullCommand)
+
   if (shouldAutoExecute) {
-    console.log('[ChatBox] AUTO-EXECUTING command:', shortcut.command)
-    // Execute command immediately with current values
+    console.log('[ChatBox] AUTO-EXECUTING command:', fullCommand)
+    // Execute command immediately with configured parameters
     try {
-      await store.sendExtensionChat(shortcut.command.trim())
+      await store.sendExtensionChat(fullCommand)
       // Optionally scroll to show the result
       setTimeout(() => {
         scrollToBottom()
@@ -700,19 +773,19 @@ const handleShortcutExecuted = async (shortcut: any, options?: { autoExecute: bo
         message: 'Failed to execute command. Try again with parameters.'
       })
       // Fall back to input mode
-      inputValue.value = shortcut.command + ' '
+      inputValue.value = fullCommand + ' '
       nextTick(() => {
         textareaRef.value?.focus()
       })
     }
   } else {
-    console.log('[ChatBox] FILLING INPUT with command:', shortcut.command)
+    console.log('[ChatBox] FILLING INPUT with command:', fullCommand)
 
     // Set flag to prevent auto-submission
     justFilledFromShortcut.value = true
 
-    // Fill the input with the shortcut command for user to add parameters
-    inputValue.value = shortcut.command + ' '
+    // Fill the input with the shortcut command and parameters for user to modify
+    inputValue.value = fullCommand + ' '
 
     nextTick(() => {
       textareaRef.value?.focus()
@@ -732,12 +805,16 @@ const handleShortcutExecuted = async (shortcut: any, options?: { autoExecute: bo
 }
 
 const handleShortcutCustomize = () => {
-  console.log('Shortcut customization requested')
-  // TODO: Open shortcut customization modal or navigate to options
-  store.addNotification({
-    type: 'info',
-    message: 'Shortcut customization coming soon!'
-  })
+  console.log('[ChatBox] Shortcut customization requested')
+  try {
+    chrome.runtime.openOptionsPage()
+  } catch (error) {
+    console.error('[ChatBox] Failed to open options page:', error)
+    store.addNotification({
+      type: 'error',
+      message: 'Failed to open options page. Please try again.'
+    })
+  }
 }
 
 // TaskCreator event handlers with validation

@@ -233,6 +233,23 @@ export interface VersionManagementSettings {
   }
 }
 
+export interface ShortcutConfig {
+  command: string        // '/tasks', '/save', etc.
+  parameters: string     // Default parameters
+  autoExecute: boolean   // Execute immediately or fill input
+  enabled: boolean       // Show/hide button
+}
+
+export interface CustomButtonConfig {
+  id: string             // Unique ID for the button
+  label: string          // Display label (max 10 chars)
+  icon: string           // Emoji or single character
+  command: string        // Command to execute
+  parameters: string     // Default parameters
+  autoExecute: boolean   // Execute immediately or fill input
+  position: number       // Display order (after default buttons)
+}
+
 export interface UserSettings {
   defaultCloseAfterSave: boolean
   maxSearchHistory: number
@@ -245,6 +262,14 @@ export interface UserSettings {
   aiLogLevel: 'info' | 'debug'
   versionManagement: VersionManagementSettings
   aiAutomation?: import('../messaging/ai-types').AIAutomationSettings
+  shortcuts?: {
+    tasks: ShortcutConfig
+    save: ShortcutConfig
+    notes: ShortcutConfig
+    search: ShortcutConfig
+    ai: ShortcutConfig
+  }
+  customButtons?: CustomButtonConfig[]  // Additional custom shortcut buttons
 }
 
 // Version Management Operations

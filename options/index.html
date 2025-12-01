@@ -59,6 +59,228 @@
       </section>
 
       <section class="options-section">
+        <h2>Shortcut Buttons</h2>
+        <p class="section-description">Customize the 5 shortcut buttons in the chat interface. Choose which command each button executes, set default parameters, and control behavior.</p>
+
+        <!-- Tasks Button -->
+        <div class="shortcut-config">
+          <div class="shortcut-header">
+            <h3>📋 Tasks</h3>
+            <label class="shortcut-enabled-toggle">
+              <input type="checkbox" id="shortcut-tasks-enabled" />
+              <span>Enabled</span>
+            </label>
+          </div>
+
+          <div class="shortcut-fields">
+            <label class="field">
+              <span class="field-label">Command</span>
+              <select id="shortcut-tasks-command" class="field-control">
+                <!-- Populated from GET_AVAILABLE_COMMANDS -->
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field-label">Parameters (optional)</span>
+              <input type="text" id="shortcut-tasks-parameters" class="field-control" placeholder="--search=work" />
+              <p class="field-helper">Additional parameters to pass to the command (e.g., --type=page)</p>
+            </label>
+
+            <label class="field-toggle">
+              <input type="checkbox" id="shortcut-tasks-autoexecute" />
+              <span>Auto-execute (run immediately instead of filling input)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Save Button -->
+        <div class="shortcut-config">
+          <div class="shortcut-header">
+            <h3>💾 Save</h3>
+            <label class="shortcut-enabled-toggle">
+              <input type="checkbox" id="shortcut-save-enabled" />
+              <span>Enabled</span>
+            </label>
+          </div>
+
+          <div class="shortcut-fields">
+            <label class="field">
+              <span class="field-label">Command</span>
+              <select id="shortcut-save-command" class="field-control">
+                <!-- Populated from GET_AVAILABLE_COMMANDS -->
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field-label">Parameters (optional)</span>
+              <input type="text" id="shortcut-save-parameters" class="field-control" placeholder="--close" />
+              <p class="field-helper">Additional parameters to pass to the command</p>
+            </label>
+
+            <label class="field-toggle">
+              <input type="checkbox" id="shortcut-save-autoexecute" />
+              <span>Auto-execute (run immediately instead of filling input)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Notes Button -->
+        <div class="shortcut-config">
+          <div class="shortcut-header">
+            <h3>📝 Notes</h3>
+            <label class="shortcut-enabled-toggle">
+              <input type="checkbox" id="shortcut-notes-enabled" />
+              <span>Enabled</span>
+            </label>
+          </div>
+
+          <div class="shortcut-fields">
+            <label class="field">
+              <span class="field-label">Command</span>
+              <select id="shortcut-notes-command" class="field-control">
+                <!-- Populated from GET_AVAILABLE_COMMANDS -->
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field-label">Parameters (optional)</span>
+              <input type="text" id="shortcut-notes-parameters" class="field-control" placeholder="--type=page" />
+              <p class="field-helper">Additional parameters to pass to the command</p>
+            </label>
+
+            <label class="field-toggle">
+              <input type="checkbox" id="shortcut-notes-autoexecute" />
+              <span>Auto-execute (run immediately instead of filling input)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Search Button -->
+        <div class="shortcut-config">
+          <div class="shortcut-header">
+            <h3>🔍 Find</h3>
+            <label class="shortcut-enabled-toggle">
+              <input type="checkbox" id="shortcut-search-enabled" />
+              <span>Enabled</span>
+            </label>
+          </div>
+
+          <div class="shortcut-fields">
+            <label class="field">
+              <span class="field-label">Command</span>
+              <select id="shortcut-search-command" class="field-control">
+                <!-- Populated from GET_AVAILABLE_COMMANDS -->
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field-label">Parameters (optional)</span>
+              <input type="text" id="shortcut-search-parameters" class="field-control" placeholder="--type=all" />
+              <p class="field-helper">Additional parameters to pass to the command</p>
+            </label>
+
+            <label class="field-toggle">
+              <input type="checkbox" id="shortcut-search-autoexecute" />
+              <span>Auto-execute (run immediately instead of filling input)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- AI Button -->
+        <div class="shortcut-config">
+          <div class="shortcut-header">
+            <h3>🤖 AI</h3>
+            <label class="shortcut-enabled-toggle">
+              <input type="checkbox" id="shortcut-ai-enabled" />
+              <span>Enabled</span>
+            </label>
+          </div>
+
+          <div class="shortcut-fields">
+            <label class="field">
+              <span class="field-label">Command</span>
+              <select id="shortcut-ai-command" class="field-control">
+                <!-- Populated from GET_AVAILABLE_COMMANDS -->
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field-label">Parameters (optional)</span>
+              <input type="text" id="shortcut-ai-parameters" class="field-control" placeholder="" />
+              <p class="field-helper">Additional parameters to pass to the command</p>
+            </label>
+
+            <label class="field-toggle">
+              <input type="checkbox" id="shortcut-ai-autoexecute" />
+              <span>Auto-execute (run immediately instead of filling input)</span>
+            </label>
+          </div>
+        </div>
+
+        <p id="shortcuts-status-message" class="status"></p>
+      </section>
+
+      <section class="options-section">
+        <h2>Custom Buttons</h2>
+        <p class="section-description">Add additional custom shortcut buttons beyond the 5 default ones. Custom buttons appear after the default buttons in the chat interface.</p>
+
+        <div id="custom-buttons-list">
+          <!-- Custom buttons will be dynamically added here -->
+        </div>
+
+        <button type="button" id="add-custom-button" class="add-button">
+          + Add Custom Button
+        </button>
+
+        <div id="custom-button-form" class="custom-button-form" style="display: none;">
+          <h3 id="custom-button-form-title">New Custom Button</h3>
+
+          <label class="field">
+            <span class="field-label">Label (max 10 chars) *</span>
+            <input type="text" id="custom-button-label" class="field-control" maxlength="10" placeholder="Quick" required />
+            <p class="field-helper">Short label displayed on the button</p>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Icon (emoji or single char) *</span>
+            <input type="text" id="custom-button-icon" class="field-control" maxlength="2" placeholder="⚡" required />
+            <p class="field-helper">Emoji or single character icon</p>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Command *</span>
+            <select id="custom-button-command" class="field-control" required>
+              <!-- Populated from GET_AVAILABLE_COMMANDS -->
+            </select>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Parameters (optional)</span>
+            <input type="text" id="custom-button-parameters" class="field-control" placeholder="--type=page" />
+            <p class="field-helper">Additional parameters to pass to the command</p>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Position</span>
+            <input type="number" id="custom-button-position" class="field-control" min="0" value="0" />
+            <p class="field-helper">Display order (0 = first custom button, 1 = second, etc.)</p>
+          </label>
+
+          <label class="field-toggle">
+            <input type="checkbox" id="custom-button-autoexecute" />
+            <span>Auto-execute (run immediately instead of filling input)</span>
+          </label>
+
+          <div class="form-actions">
+            <button type="button" id="save-custom-button" class="save-button">Save</button>
+            <button type="button" id="cancel-custom-button" class="cancel-button">Cancel</button>
+          </div>
+        </div>
+
+        <p id="custom-buttons-status-message" class="status"></p>
+      </section>
+
+      <section class="options-section">
         <h2>Version Management</h2>
         <p class="section-description">Configure how document versions are saved, managed, and cleaned up in the authoring workspace.</p>
 

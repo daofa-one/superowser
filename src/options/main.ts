@@ -55,12 +55,37 @@ type VersionManagementSettings = {
   }
 }
 
+type ShortcutConfig = {
+  command: string
+  parameters: string
+  autoExecute: boolean
+  enabled: boolean
+}
+
+type CustomButtonConfig = {
+  id: string
+  label: string
+  icon: string
+  command: string
+  parameters: string
+  autoExecute: boolean
+  position: number
+}
+
 type UserSettings = {
   preferredSearchEngine?: string
   preferredAiProvider?: string
   reuseAiTab?: boolean
   aiHiddenMode?: boolean
   versionManagement?: VersionManagementSettings
+  shortcuts?: {
+    tasks: ShortcutConfig
+    save: ShortcutConfig
+    notes: ShortcutConfig
+    search: ShortcutConfig
+    ai: ShortcutConfig
+  }
+  customButtons?: CustomButtonConfig[]
 }
 
 type SuccessResponse<T> = {
@@ -81,6 +106,26 @@ const aiSelect = document.getElementById('ai-provider-select') as HTMLSelectElem
 const aiStatusMessage = document.getElementById('ai-status-message') as HTMLParagraphElement | null
 const aiReuseToggle = document.getElementById('ai-reuse-toggle') as HTMLInputElement | null
 const aiLogLevelSelect = document.getElementById('ai-log-level-select') as HTMLSelectElement | null
+
+// Shortcut Elements
+const shortcuts = ['tasks', 'save', 'notes', 'search', 'ai'] as const
+const shortcutElements: Record<string, {
+  enabled: HTMLInputElement | null
+  command: HTMLSelectElement | null
+  parameters: HTMLInputElement | null
+  autoExecute: HTMLInputElement | null
+}> = {}
+
+shortcuts.forEach(id => {
+  shortcutElements[id] = {
+    enabled: document.getElementById(`shortcut-${id}-enabled`) as HTMLInputElement | null,
+    command: document.getElementById(`shortcut-${id}-command`) as HTMLSelectElement | null,
+    parameters: document.getElementById(`shortcut-${id}-parameters`) as HTMLInputElement | null,
+    autoExecute: document.getElementById(`shortcut-${id}-autoexecute`) as HTMLInputElement | null
+  }
+})
+
+const shortcutsStatusMessage = document.getElementById('shortcuts-status-message') as HTMLParagraphElement | null
 
 // Version Management Elements
 const versionAutoSaveEnabled = document.getElementById('version-auto-save-enabled') as HTMLInputElement | null
@@ -168,6 +213,12 @@ const loadSettings = async () => {
 
     aiReuseToggle.checked = settings.reuseAiTab !== false
 
+    // Load shortcut settings
+    await loadAvailableCommands()
+    loadShortcutSettings(settings.shortcuts)
+
+    // Load custom buttons
+    loadCustomButtons(settings.customButtons)
 
     // Load version management settings
     loadVersionManagementSettings(settings.versionManagement)
@@ -179,6 +230,10 @@ const loadSettings = async () => {
     showStatus(aiStatusMessage, 'Could not load assistant setting. Using ChatGPT.', 'error')
     aiSelect.value = 'chatgpt'
     aiReuseToggle.checked = true
+
+    // Load defaults for shortcuts
+    await loadAvailableCommands()
+    loadShortcutSettings()
 
     loadVersionManagementSettings() // Load defaults
   }
@@ -264,6 +319,308 @@ aiLogLevelSelect.addEventListener('change', (event) => {
   const target = event.target as HTMLSelectElement
   persistAiLogLevel(target.value)
 })
+
+// Shortcut Management Functions
+const getDefaultShortcuts = () => ({
+  tasks: { command: '/tasks', parameters: '', autoExecute: true, enabled: true },
+  save: { command: '/save', parameters: '', autoExecute: false, enabled: true },
+  notes: { command: '/notes', parameters: '', autoExecute: false, enabled: true },
+  search: { command: '/find', parameters: '', autoExecute: false, enabled: true },
+  ai: { command: '/ai', parameters: '', autoExecute: false, enabled: true }
+})
+
+const loadAvailableCommands = async () => {
+  try {
+    const commands = await sendMessage<Array<{ name: string; command: string; description: string; category: string }>>({
+      type: 'GET_AVAILABLE_COMMANDS'
+    })
+
+    const commandOptions = commands.map(cmd =>
+      `<option value="${cmd.command}">${cmd.command} - ${cmd.description}</option>`
+    ).join('')
+
+    // Populate shortcut command dropdowns
+    shortcuts.forEach(id => {
+      const select = shortcutElements[id]?.command
+      if (!select) return
+      select.innerHTML = commandOptions
+    })
+
+    // Populate custom button command dropdown
+    if (customButtonCommand) {
+      customButtonCommand.innerHTML = commandOptions
+    }
+  } catch (error) {
+    console.error('[Options] Failed to load available commands:', error)
+  }
+}
+
+const loadShortcutSettings = async (settings?: UserSettings['shortcuts']) => {
+  const config = settings || getDefaultShortcuts()
+
+  shortcuts.forEach(id => {
+    const elements = shortcutElements[id]
+    const cfg = config[id]
+
+    if (!elements || !cfg) return
+
+    if (elements.enabled) elements.enabled.checked = cfg.enabled
+    if (elements.command) elements.command.value = cfg.command
+    if (elements.parameters) elements.parameters.value = cfg.parameters
+    if (elements.autoExecute) elements.autoExecute.checked = cfg.autoExecute
+  })
+}
+
+const saveShortcutSettings = async () => {
+  try {
+    const config: UserSettings['shortcuts'] = {
+      tasks: {
+        command: shortcutElements.tasks.command?.value || '/tasks',
+        parameters: shortcutElements.tasks.parameters?.value || '',
+        autoExecute: shortcutElements.tasks.autoExecute?.checked ?? true,
+        enabled: shortcutElements.tasks.enabled?.checked ?? true
+      },
+      save: {
+        command: shortcutElements.save.command?.value || '/save',
+        parameters: shortcutElements.save.parameters?.value || '',
+        autoExecute: shortcutElements.save.autoExecute?.checked ?? false,
+        enabled: shortcutElements.save.enabled?.checked ?? true
+      },
+      notes: {
+        command: shortcutElements.notes.command?.value || '/notes',
+        parameters: shortcutElements.notes.parameters?.value || '',
+        autoExecute: shortcutElements.notes.autoExecute?.checked ?? false,
+        enabled: shortcutElements.notes.enabled?.checked ?? true
+      },
+      search: {
+        command: shortcutElements.search.command?.value || '/find',
+        parameters: shortcutElements.search.parameters?.value || '',
+        autoExecute: shortcutElements.search.autoExecute?.checked ?? false,
+        enabled: shortcutElements.search.enabled?.checked ?? true
+      },
+      ai: {
+        command: shortcutElements.ai.command?.value || '/ai',
+        parameters: shortcutElements.ai.parameters?.value || '',
+        autoExecute: shortcutElements.ai.autoExecute?.checked ?? false,
+        enabled: shortcutElements.ai.enabled?.checked ?? true
+      }
+    }
+
+    await sendMessage({
+      type: 'UPDATE_SHORTCUT_SETTINGS',
+      data: { shortcuts: config }
+    })
+
+    showStatus(shortcutsStatusMessage, 'Shortcut buttons saved successfully!', 'success')
+  } catch (error) {
+    console.error('[Options] Failed to save shortcut settings:', error)
+    showStatus(shortcutsStatusMessage, 'Failed to save shortcuts. Please try again.', 'error')
+  }
+}
+
+// Add change listeners for all shortcut controls
+shortcuts.forEach(id => {
+  const elements = shortcutElements[id]
+  if (!elements) return
+
+  const fields = ['enabled', 'command', 'parameters', 'autoExecute'] as const
+  fields.forEach(field => {
+    const element = elements[field]
+    if (element) {
+      element.addEventListener('change', saveShortcutSettings)
+    }
+  })
+})
+
+// Custom Buttons Management
+const customButtonsList = document.getElementById('custom-buttons-list') as HTMLDivElement | null
+const addCustomButtonBtn = document.getElementById('add-custom-button') as HTMLButtonElement | null
+const customButtonForm = document.getElementById('custom-button-form') as HTMLDivElement | null
+const customButtonFormTitle = document.getElementById('custom-button-form-title') as HTMLHeadingElement | null
+const customButtonLabel = document.getElementById('custom-button-label') as HTMLInputElement | null
+const customButtonIcon = document.getElementById('custom-button-icon') as HTMLInputElement | null
+const customButtonCommand = document.getElementById('custom-button-command') as HTMLSelectElement | null
+const customButtonParameters = document.getElementById('custom-button-parameters') as HTMLInputElement | null
+const customButtonPosition = document.getElementById('custom-button-position') as HTMLInputElement | null
+const customButtonAutoExecute = document.getElementById('custom-button-autoexecute') as HTMLInputElement | null
+const saveCustomButtonBtn = document.getElementById('save-custom-button') as HTMLButtonElement | null
+const cancelCustomButtonBtn = document.getElementById('cancel-custom-button') as HTMLButtonElement | null
+const customButtonsStatusMessage = document.getElementById('custom-buttons-status-message') as HTMLParagraphElement | null
+
+let customButtons: any[] = []
+let editingButtonId: string | null = null
+
+const generateButtonId = () => `custom-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+
+const renderCustomButtons = () => {
+  if (!customButtonsList) return
+
+  if (customButtons.length === 0) {
+    customButtonsList.innerHTML = '<p style="color: #64748b; font-size: 14px; margin: 12px 0;">No custom buttons yet. Click "Add Custom Button" to create one.</p>'
+    return
+  }
+
+  // Sort by position
+  const sorted = [...customButtons].sort((a, b) => a.position - b.position)
+
+  customButtonsList.innerHTML = sorted.map(button => `
+    <div class="custom-button-card" data-id="${button.id}">
+      <div class="custom-button-info">
+        <div class="custom-button-header">
+          <span class="custom-button-icon">${button.icon}</span>
+          <span class="custom-button-label">${button.label}</span>
+        </div>
+        <div class="custom-button-details">
+          ${button.command}${button.parameters ? ' ' + button.parameters : ''} • Position: ${button.position} • ${button.autoExecute ? 'Auto-execute' : 'Fill input'}
+        </div>
+      </div>
+      <div class="custom-button-actions">
+        <button class="edit-button" data-id="${button.id}">Edit</button>
+        <button class="delete-button" data-id="${button.id}">Delete</button>
+      </div>
+    </div>
+  `).join('')
+
+  // Add event listeners
+  customButtonsList.querySelectorAll('.edit-button').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = (e.target as HTMLElement).getAttribute('data-id')
+      if (id) editCustomButton(id)
+    })
+  })
+
+  customButtonsList.querySelectorAll('.delete-button').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = (e.target as HTMLElement).getAttribute('data-id')
+      if (id) deleteCustomButton(id)
+    })
+  })
+}
+
+const showCustomButtonForm = (editing = false) => {
+  if (!customButtonForm || !customButtonFormTitle) return
+
+  customButtonFormTitle.textContent = editing ? 'Edit Custom Button' : 'New Custom Button'
+  customButtonForm.style.display = 'block'
+
+  if (!editing) {
+    // Reset form
+    if (customButtonLabel) customButtonLabel.value = ''
+    if (customButtonIcon) customButtonIcon.value = ''
+    if (customButtonCommand) customButtonCommand.selectedIndex = 0
+    if (customButtonParameters) customButtonParameters.value = ''
+    if (customButtonPosition) customButtonPosition.value = customButtons.length.toString()
+    if (customButtonAutoExecute) customButtonAutoExecute.checked = false
+  }
+}
+
+const hideCustomButtonForm = () => {
+  if (!customButtonForm) return
+  customButtonForm.style.display = 'none'
+  editingButtonId = null
+}
+
+const editCustomButton = (id: string) => {
+  const button = customButtons.find(b => b.id === id)
+  if (!button) return
+
+  editingButtonId = id
+
+  if (customButtonLabel) customButtonLabel.value = button.label
+  if (customButtonIcon) customButtonIcon.value = button.icon
+  if (customButtonCommand) customButtonCommand.value = button.command
+  if (customButtonParameters) customButtonParameters.value = button.parameters || ''
+  if (customButtonPosition) customButtonPosition.value = button.position.toString()
+  if (customButtonAutoExecute) customButtonAutoExecute.checked = button.autoExecute
+
+  showCustomButtonForm(true)
+}
+
+const deleteCustomButton = async (id: string) => {
+  if (!confirm('Are you sure you want to delete this custom button?')) return
+
+  customButtons = customButtons.filter(b => b.id !== id)
+  await saveCustomButtons()
+  renderCustomButtons()
+  showStatus(customButtonsStatusMessage, 'Custom button deleted successfully!', 'success')
+}
+
+const saveCustomButtons = async () => {
+  try {
+    await sendMessage({
+      type: 'UPDATE_USER_SETTINGS',
+      data: { customButtons }
+    })
+  } catch (error) {
+    console.error('[Options] Failed to save custom buttons:', error)
+    throw error
+  }
+}
+
+const loadCustomButtons = (buttons?: any[]) => {
+  customButtons = buttons || []
+  renderCustomButtons()
+}
+
+// Event listeners for custom buttons
+if (addCustomButtonBtn) {
+  addCustomButtonBtn.addEventListener('click', () => {
+    editingButtonId = null
+    showCustomButtonForm(false)
+  })
+}
+
+if (cancelCustomButtonBtn) {
+  cancelCustomButtonBtn.addEventListener('click', hideCustomButtonForm)
+}
+
+if (saveCustomButtonBtn) {
+  saveCustomButtonBtn.addEventListener('click', async () => {
+    // Validate inputs
+    if (!customButtonLabel?.value.trim()) {
+      showStatus(customButtonsStatusMessage, 'Please enter a label', 'error')
+      return
+    }
+    if (!customButtonIcon?.value.trim()) {
+      showStatus(customButtonsStatusMessage, 'Please enter an icon', 'error')
+      return
+    }
+    if (!customButtonCommand?.value) {
+      showStatus(customButtonsStatusMessage, 'Please select a command', 'error')
+      return
+    }
+
+    const button = {
+      id: editingButtonId || generateButtonId(),
+      label: customButtonLabel.value.trim(),
+      icon: customButtonIcon.value.trim(),
+      command: customButtonCommand.value,
+      parameters: customButtonParameters?.value.trim() || '',
+      position: parseInt(customButtonPosition?.value || '0'),
+      autoExecute: customButtonAutoExecute?.checked ?? false
+    }
+
+    if (editingButtonId) {
+      // Update existing
+      const index = customButtons.findIndex(b => b.id === editingButtonId)
+      if (index >= 0) {
+        customButtons[index] = button
+      }
+    } else {
+      // Add new
+      customButtons.push(button)
+    }
+
+    try {
+      await saveCustomButtons()
+      renderCustomButtons()
+      hideCustomButtonForm()
+      showStatus(customButtonsStatusMessage, 'Custom button saved successfully!', 'success')
+    } catch (error) {
+      showStatus(customButtonsStatusMessage, 'Failed to save custom button. Please try again.', 'error')
+    }
+  })
+}
 
 // Version Management Functions
 const getDefaultVersionSettings = (): VersionManagementSettings => ({

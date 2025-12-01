@@ -153,6 +153,15 @@ export interface UpdateVersionManagementSettingsMessage extends BaseMessage {
   data: Partial<UserSettings['versionManagement']>
 }
 
+export interface GetAvailableCommandsMessage extends BaseMessage {
+  type: 'GET_AVAILABLE_COMMANDS'
+}
+
+export interface UpdateShortcutSettingsMessage extends BaseMessage {
+  type: 'UPDATE_SHORTCUT_SETTINGS'
+  data: { shortcuts: UserSettings['shortcuts'] }
+}
+
 export interface OpenPageMessage extends BaseMessage {
   type: 'OPEN_PAGE'
   data: { url: string; newTab?: boolean }
@@ -348,6 +357,8 @@ export type RequestMessage =
   | GetUserSettingsMessage
   | UpdateUserSettingsMessage
   | UpdateVersionManagementSettingsMessage
+  | GetAvailableCommandsMessage
+  | UpdateShortcutSettingsMessage
   | OpenPageMessage
   | GetSearchSuggestionsMessage
   | GetPopularTagsMessage

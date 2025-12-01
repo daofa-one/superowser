@@ -13,6 +13,8 @@ export interface ChatShortcut {
   autoExecute?: boolean
   /** If true, requires user input/parameters before executing */
   requiresInput?: boolean
+  /** Additional parameters to pass to the command */
+  parameters?: string
   conditions?: {
     hasActiveTask?: boolean
     currentView?: string
@@ -41,7 +43,7 @@ export const DEFAULT_SHORTCUTS: ChatShortcut[] = [
     position: 1,
     enabled: true,
     description: 'Save current page',
-    autoExecute: true, // Uses defaults (current task, current tab)
+    autoExecute: false, // Fill input so user can add tags, task, etc.
     requiresInput: false
   },
   {

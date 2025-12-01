@@ -424,6 +424,11 @@ async function handleMessage(message: RequestMessage, container: DIContainer): P
         if (typeof message.data?.aiLogLevel === 'string' && ['info', 'debug'].includes(message.data.aiLogLevel) && container.backgroundStore.setAiLogLevelPreference) {
           await container.backgroundStore.setAiLogLevelPreference(message.data.aiLogLevel)
         }
+        if (message.data?.customButtons !== undefined) {
+          container.backgroundStore.user.settings.customButtons = message.data.customButtons
+          await container.backgroundStore.saveSettingsToStorage()
+          container.backgroundStore.broadcastStateUpdate('user.settings', container.backgroundStore.user.settings)
+        }
         data = container.backgroundStore.user.settings
         break
 
@@ -434,6 +439,30 @@ async function handleMessage(message: RequestMessage, container: DIContainer): P
         await container.backgroundStore.updateVersionManagementSettings(message.data)
         data = container.backgroundStore.user.settings
         break
+
+      case 'GET_AVAILABLE_COMMANDS': {
+        // Get the registry from the command service to access full command definitions
+        const registry = (container.commandService as any).getRegistry()
+        const commands = registry.getAllCommands()
+        data = commands.map((cmd: any) => ({
+          name: cmd.name,
+          command: `/${cmd.name}`,
+          description: cmd.description,
+          category: cmd.category
+        }))
+        break
+      }
+
+      case 'UPDATE_SHORTCUT_SETTINGS': {
+        if (!container.backgroundStore) {
+          throw new Error('Background store not initialized')
+        }
+        container.backgroundStore.user.settings.shortcuts = message.data.shortcuts
+        await container.backgroundStore.saveSettingsToStorage()
+        container.backgroundStore.broadcastStateUpdate('user.settings', container.backgroundStore.user.settings)
+        data = { success: true }
+        break
+      }
 
       case 'OPEN_PAGE':
         await focusOrOpenUrl(message.data.url)
