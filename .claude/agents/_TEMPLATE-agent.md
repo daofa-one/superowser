@@ -1,57 +1,98 @@
-# Agent: <Agent Name>
+---
+name: your-agent-name
+description: Brief description of when this agent should be invoked
+tools: Read, Write, Glob, Grep  # Optional - inherits all tools if omitted
+model: sonnet  # Optional - specify 'sonnet', 'opus', 'haiku', or 'inherit'
+permissionMode: default  # Optional - permission mode for the subagent
+skills: skill1, skill2  # Optional - skills to auto-load
+---
 
-## Role
+# Your Agent Name - Short Descriptive Title
 
-Short, one-paragraph description of what this agent is responsible for in the TridentFlow project.
+Your agent's system prompt goes here. This can be multiple paragraphs
+and should clearly define the agent's role, capabilities, and approach
+to solving problems.
 
-## Responsibilities
+## Core Responsibilities
 
 - Bullet list of core responsibilities
 - Prefer behavior-oriented wording, not implementation details
 - Keep this high-level and stable
+- Focus on what, why, and when - not how
 
 ## Owned Directories
 
 List the directories (if any) this agent is allowed to modify.
 
-- `<path-1>/`
-- `<path-2>/`
-- (Leave empty if this agent only edits docs or .claude files.)
+- `path/to/directory/` - Purpose of this directory
+- `another/path/` - Purpose of this directory
+- (Leave empty if this agent only edits docs or .claude files)
+
+## Boundaries
+
+Define what this agent does NOT do and when to defer to other agents.
+
+- **DO NOT** modify X (that's the Y Agent's job)
+- **DO** consult the Z Agent for ABC decisions
+- **MUST** collaborate with W Agent for DEF tasks
+- Focus on "what" and "why" rather than "how"
 
 ## Skills to Use
 
-You must always load and follow these skills:
+List relevant skills this agent should reference:
 
-- `code-standards`            # If this agent ever writes or edits code
-- `testing-standards`         # If this agent ever writes or edits tests
-- `etl-domain-knowledge`      # If this agent reasons about schemas/workflows/pipelines
-- `api-discovery`             # If this agent explores or integrates external APIs
+- `skill-name` - When and why to use this skill
+- `another-skill` - Context for usage
 
-(Only list skills that are truly relevant to this agent.)
+Only list skills that are truly relevant to this agent.
 
 ## Commands to Use
 
-When suggesting how to run or verify things, prefer commands from:
+Reference commands this agent should be aware of:
 
-- `.claude/commands/dev-commands.md`   # For dev servers / local runs
-- `.claude/commands/test-commands.md`  # For tests
-- `.claude/commands/docs-commands.md`  # For docs
+- `/command-name` - What this command does
+- `/another-command` - When to use this
 
-Mention specific commands where helpful, but do not invent new ones if a suitable command already exists.
+## Technical Expertise (Optional)
 
-## Guidelines
+### Framework/Technology Name
 
-- Keep shared-lib free of web or CLI framework concerns.
-- Explicitly define contracts between:
-  - shared-lib ↔ backend
-  - shared-lib ↔ CLI
-  - backend ↔ frontend
+Specific patterns or conventions to follow:
 
-## Debug
+```typescript
+// Example code demonstrating patterns
+```
 
-When the user writes “debug: who are you?”, reply with:
+### Another Technology
 
-- Your agent name (e.g., “I am the Backend Agent.”)
-- The directories you own
-- The skills you are using for this task
-- A short summary of what you are currently trying to do
+More specific guidance.
+
+## Development Workflow (Optional)
+
+1. **Step 1**: Description
+2. **Step 2**: Description
+3. **Step 3**: Description
+
+## Code Quality Standards (Optional)
+
+1. **Standard 1**: Description and why it matters
+2. **Standard 2**: Description and why it matters
+
+## Collaboration Workflow
+
+1. **With Agent X**: How to collaborate
+2. **With Agent Y**: When to consult
+3. **Handoff**: What to provide
+
+## Reference Materials (Optional)
+
+- Link to relevant directories
+- Documentation files
+- Related configuration
+
+## Debug Identity
+
+When the user writes "debug: who are you?", reply with:
+- "I am the [Agent Name]."
+- "I focus on [primary responsibility]."
+- A short summary of what you are currently trying to do.
