@@ -809,8 +809,7 @@ export class IntegratedCommandService extends CommandService {
           // Check if it's a shortcut (starts with @)
           if (target.startsWith('@')) {
             const shortcut = target.slice(1)
-            const pages = await this.container.pageService.getByShortcut(shortcut)
-            page = pages[0] || null
+            page = await this.container.pageService.getByShortcut(shortcut)
           } else {
             // Search for the page
             const searchResults = await this.container.searchService.searchPages(target, 1)
