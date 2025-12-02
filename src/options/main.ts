@@ -218,7 +218,12 @@ const loadSettings = async () => {
     loadShortcutSettings(settings.shortcuts)
 
     // Load custom buttons
-    loadCustomButtons(settings.customButtons)
+    try {
+      loadCustomButtons(settings.customButtons)
+    } catch (error) {
+      console.error('[Options] Failed to load custom buttons:', error)
+      loadCustomButtons([]) // Load with empty array as fallback
+    }
 
     // Load version management settings
     loadVersionManagementSettings(settings.versionManagement)
@@ -558,7 +563,8 @@ const saveCustomButtons = async () => {
 }
 
 const loadCustomButtons = (buttons?: any[]) => {
-  customButtons = buttons || []
+  // Ensure buttons is always an array
+  customButtons = Array.isArray(buttons) ? buttons : []
   renderCustomButtons()
 }
 

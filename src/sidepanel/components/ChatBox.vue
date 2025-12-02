@@ -229,7 +229,10 @@ watch(messages, async () => {
 // Function to load shortcuts from settings
 const loadShortcuts = (settings: any) => {
   const userConfigs = settings?.shortcuts || {}
-  const customButtons = settings?.customButtons || []
+  const customButtonsRaw = settings?.customButtons
+
+  // Ensure customButtons is always an array
+  const customButtons = Array.isArray(customButtonsRaw) ? customButtonsRaw : []
 
   // Merge user configs with defaults
   const defaultShortcuts = DEFAULT_SHORTCUTS.map(shortcut => ({
