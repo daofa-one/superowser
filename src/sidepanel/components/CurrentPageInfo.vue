@@ -856,19 +856,39 @@ onUnmounted(() => {
       <!-- Action Section: Buttons -->
       <div class="action-section">
         <div class="action-buttons">
-          <button class="btn btn-icon" title="Save page" @click="toggleSaveForm">
+          <button
+            class="btn btn-icon"
+            data-tooltip="Save page • Command: /save"
+            @click="toggleSaveForm"
+          >
             👍
           </button>
-          <button class="btn btn-icon" title="Set shortcut" @click="toggleShortcutForm">
+          <button
+            class="btn btn-icon"
+            data-tooltip="Set shortcut • Example: @docs"
+            @click="toggleShortcutForm"
+          >
             @
           </button>
-          <button class="btn btn-icon" title="Manage tags" @click="toggleTagForm">
+          <button
+            class="btn btn-icon"
+            data-tooltip="Add tags • Example: #javascript"
+            @click="toggleTagForm"
+          >
             #
           </button>
-          <button class="btn btn-icon" title="Add note" @click="toggleNoteForm">
+          <button
+            class="btn btn-icon"
+            data-tooltip="Add note • Command: /notes"
+            @click="toggleNoteForm"
+          >
             !!
           </button>
-          <button class="btn btn-icon" title="Copy URL" @click="copyUrl">
+          <button
+            class="btn btn-icon"
+            data-tooltip="Copy URL to clipboard"
+            @click="copyUrl"
+          >
             📋
           </button>
           <!--button class="btn btn-icon" title="Open in new tab" @click="openPage">
@@ -1432,6 +1452,38 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
+.symbol-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 12px;
+  margin: 8px 0;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b7280;
+  cursor: help;
+}
+
+.legend-item code {
+  background: #ffffff;
+  color: #1f2937;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  border: 1px solid #d1d5db;
+}
+
 .search-meta {
   font-size: 11px;
   color: #64748b;
@@ -1497,10 +1549,68 @@ onUnmounted(() => {
   background: #f8f9fa;
   color: #495057;
   font-size: 14px;
+  position: relative;
 }
 
 .btn-icon:hover:not(:disabled) {
   background: #e9ecef;
+}
+
+/* Custom tooltips for action buttons */
+.btn-icon[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #ffffff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+  z-index: 1000;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Tooltip arrow */
+.btn-icon[data-tooltip]::after {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #1f2937;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* Right-align tooltip for last button to prevent overflow */
+.action-buttons .btn-icon:last-child[data-tooltip]::before {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.action-buttons .btn-icon:last-child[data-tooltip]::after {
+  left: auto;
+  right: 8px;
+  transform: none;
+}
+
+.btn-icon:hover::before,
+.btn-icon:hover::after {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* Shortcut Form Section */

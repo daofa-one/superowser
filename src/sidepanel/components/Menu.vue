@@ -13,7 +13,8 @@ const items: MenuItem[] = [
   { label: 'Home', path: '/' },
   { label: 'Tasks', path: '/tasks' },
   { label: 'Notes', path: '/notes' },
-  { label: 'Chat', path: '/chat' }
+  { label: 'Chat', path: '/chat' },
+  { label: 'Help', path: '/help' }
 ];
 
 const navigate = (path: string) => {

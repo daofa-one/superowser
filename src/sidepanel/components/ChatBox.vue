@@ -674,7 +674,11 @@ const handleTaskDeleted = async (task: any) => {
 }
 
 const handleTaskCreateRequested = async () => {
-  await runChatCommand('/newtask')
+  // Pre-fill the input with /newtask command so user can type the name
+  inputValue.value = '/newtask '
+  nextTick(() => {
+    textareaRef.value?.focus()
+  })
 }
 
 const handleTaskEdit = (task: any) => {
@@ -915,8 +919,31 @@ const handleTaskCreatorCancel = () => {
 
     <div ref="messagesContainer" class="chat-messages">
       <div v-if="!hasMessages" class="empty-state">
-        <p class="empty-title">No conversation yet</p>
-        <p class="empty-subtitle">Start typing below to send your first message.</p>
+        <p class="empty-title">💬 Chat - Your Command Center</p>
+        <div class="command-examples">
+          <p class="examples-header">Try these commands:</p>
+          <div class="example-item">
+            <code>/save</code>
+            <span>Save current page with tags and tasks</span>
+          </div>
+          <div class="example-item">
+            <code>/find [query]</code>
+            <span>Search your saved pages and notes</span>
+          </div>
+          <div class="example-item">
+            <code>/task</code>
+            <span>Manage and switch tasks</span>
+          </div>
+          <div class="example-item">
+            <code>/notes</code>
+            <span>View and search your notes</span>
+          </div>
+          <div class="example-item">
+            <code>/ai [prompt]</code>
+            <span>Ask AI assistant for help</span>
+          </div>
+        </div>
+        <p class="empty-tip">💡 <strong>Tip:</strong> Use shortcut buttons below or type <code>/</code> to see all commands</p>
       </div>
 
       <TransitionGroup v-else appear name="chat" tag="div" class="chat-thread">
@@ -1081,12 +1108,22 @@ const handleTaskCreatorCancel = () => {
 
 
     <form class="chat-input" @submit.prevent="sendMessage">
-      <!-- Command shortcuts -->
-      <TaskShortcuts
-        :shortcuts="userShortcuts"
-        @shortcut-executed="(shortcut, options) => handleShortcutExecuted(shortcut, options)"
-        @customize="handleShortcutCustomize"
-      />
+      <!-- Command shortcuts with help button -->
+      <div class="shortcuts-container">
+        <TaskShortcuts
+          :shortcuts="userShortcuts"
+          @shortcut-executed="(shortcut, options) => handleShortcutExecuted(shortcut, options)"
+          @customize="handleShortcutCustomize"
+        />
+        <button
+          type="button"
+          class="shortcut-help-btn"
+          data-tooltip="Hold Shift + Click on shortcuts to customize parameters"
+        >
+          ?
+        </button>
+      </div>
+
       <div v-if="suggestions.length > 0" class="suggestions">
         <button
           v-for="(suggestion, index) in suggestions"
@@ -1265,18 +1302,82 @@ const handleTaskCreatorCancel = () => {
 
 .empty-state {
   text-align: center;
-  color: #9ca3af;
+  color: #4b5563;
   margin-top: 24px;
+  padding: 0 16px;
 }
 
 .empty-title {
-  margin: 0 0 4px;
+  margin: 0 0 20px;
   font-weight: 600;
+  font-size: 16px;
+  color: #1f2937;
 }
 
-.empty-subtitle {
+.command-examples {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 0 auto 16px;
+  max-width: 400px;
+  text-align: left;
+}
+
+.examples-header {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.example-item {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.example-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.example-item code {
+  background: #f3f4f6;
+  color: #1d4ed8;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 100px;
+}
+
+.example-item span {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.empty-tip {
   margin: 0;
   font-size: 13px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.empty-tip code {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .chat-bubble {
@@ -1381,6 +1482,80 @@ const handleTaskCreatorCancel = () => {
   flex-direction: column;
   gap: 6px;
   z-index: 10;
+}
+
+.shortcuts-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcut-help-btn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: help;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.shortcut-help-btn:hover {
+  background: #3b82f6;
+  color: #ffffff;
+  border-color: #3b82f6;
+  transform: scale(1.1);
+}
+
+/* Custom tooltip */
+.shortcut-help-btn[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  background: #1f2937;
+  color: #ffffff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+  z-index: 1000;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Tooltip arrow */
+.shortcut-help-btn[data-tooltip]::after {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  right: 6px;
+  border: 6px solid transparent;
+  border-top-color: #1f2937;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.shortcut-help-btn:hover::before,
+.shortcut-help-btn:hover::after {
+  opacity: 1;
+  visibility: visible;
 }
 
 .chat-input textarea {

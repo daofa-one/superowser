@@ -3,6 +3,7 @@ import Home from '../views/Home.vue'
 import Tasks from '../views/Tasks.vue'
 import Notes from '../views/Notes.vue'
 import Chat from '../views/Chat.vue'
+import Help from '../views/Help.vue'
 
 const routes = [
   {
@@ -24,6 +25,11 @@ const routes = [
     path: '/chat',
     name: 'Chat',
     component: Chat
+  },
+  {
+    path: '/help',
+    name: 'Help',
+    component: Help
   }
 ]
 
