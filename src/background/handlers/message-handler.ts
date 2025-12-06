@@ -400,15 +400,20 @@ async function handleMessage(message: RequestMessage, container: DIContainer): P
         if (typeof message.data?.reuseAiTab === 'boolean' && container.backgroundStore.setAiTabReusePreference) {
           await container.backgroundStore.setAiTabReusePreference(message.data.reuseAiTab)
         }
-        if (typeof message.data?.aiLogLevel === 'string' && ['info', 'debug'].includes(message.data.aiLogLevel) && container.backgroundStore.setAiLogLevelPreference) {
-          await container.backgroundStore.setAiLogLevelPreference(message.data.aiLogLevel)
-        }
         if (message.data?.customButtons !== undefined) {
           container.backgroundStore.user.settings.customButtons = message.data.customButtons
           await container.backgroundStore.saveSettingsToStorage()
           container.backgroundStore.broadcastStateUpdate('user.settings', container.backgroundStore.user.settings)
         }
         data = container.backgroundStore.user.settings
+        break
+
+      case 'UPDATE_LOG_LEVELS':
+        if (!container.backgroundStore?.updateLogLevels) {
+          throw new Error('updateLogLevels method not available')
+        }
+        await container.backgroundStore.updateLogLevels(message.data.logLevels)
+        data = container.backgroundStore.user.settings.logLevels
         break
 
       case 'UPDATE_VERSION_MANAGEMENT_SETTINGS':

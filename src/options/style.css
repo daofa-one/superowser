@@ -646,3 +646,112 @@ code {
     background: #0f172a;
   }
 }
+
+/* Logging Configuration Styles */
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.collapsible-header:hover {
+  background: #ffffff;
+  border-color: #cbd5e1;
+}
+
+.toggle-icon {
+  font-size: 14px;
+  color: #64748b;
+  transition: transform 0.2s ease;
+  min-width: 16px;
+  text-align: center;
+}
+
+.toggle-label {
+  font-weight: 500;
+  font-size: 14px;
+  color: #475569;
+}
+
+.collapsible-content {
+  margin-top: 16px;
+}
+
+.logging-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.global-control {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
+.global-control .field-label {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.global-control .field-control {
+  width: 100%;
+  max-width: 240px;
+}
+
+.category-icon {
+  margin-right: 4px;
+  font-size: 16px;
+}
+
+.field-divider {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 8px 0;
+}
+
+.log-level-select {
+  max-width: 160px;
+}
+
+/* Dark mode for logging */
+@media (prefers-color-scheme: dark) {
+  .collapsible-header {
+    background: #0f172a;
+    border-color: rgba(148, 163, 184, 0.25);
+  }
+
+  .collapsible-header:hover {
+    background: #1e293b;
+    border-color: rgba(148, 163, 184, 0.4);
+  }
+
+  .toggle-icon {
+    color: #94a3b8;
+  }
+
+  .toggle-label {
+    color: #cbd5e1;
+  }
+
+  .global-control {
+    background: #1e293b;
+    border-color: rgba(148, 163, 184, 0.25);
+  }
+
+  .global-control .field-label {
+    color: #f1f5f9;
+  }
+
+  .field-divider {
+    border-top-color: rgba(148, 163, 184, 0.2);
+  }
+}

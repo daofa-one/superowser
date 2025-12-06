@@ -72,11 +72,25 @@ type CustomButtonConfig = {
   position: number
 }
 
+type LogLevel = 'error' | 'warn' | 'info' | 'debug'
+
+type LogLevelSettings = {
+  background: LogLevel
+  'business-logic': LogLevel
+  commands: LogLevel
+  ai: LogLevel
+  ui: LogLevel
+  authoring: LogLevel
+  infrastructure: LogLevel
+  'content-scripts': LogLevel
+}
+
 type UserSettings = {
   preferredSearchEngine?: string
   preferredAiProvider?: string
   reuseAiTab?: boolean
   aiHiddenMode?: boolean
+  logLevels?: LogLevelSettings
   versionManagement?: VersionManagementSettings
   shortcuts?: {
     tasks: ShortcutConfig
@@ -105,7 +119,21 @@ const engineStatusMessage = document.getElementById('search-status-message') as 
 const aiSelect = document.getElementById('ai-provider-select') as HTMLSelectElement | null
 const aiStatusMessage = document.getElementById('ai-status-message') as HTMLParagraphElement | null
 const aiReuseToggle = document.getElementById('ai-reuse-toggle') as HTMLInputElement | null
-const aiLogLevelSelect = document.getElementById('ai-log-level-select') as HTMLSelectElement | null
+
+// Logging Elements
+const loggingToggle = document.getElementById('logging-toggle') as HTMLDivElement | null
+const loggingContent = document.getElementById('logging-content') as HTMLDivElement | null
+const logLevelGlobal = document.getElementById('log-level-global') as HTMLSelectElement | null
+const logLevelBackground = document.getElementById('log-level-background') as HTMLSelectElement | null
+const logLevelBusinessLogic = document.getElementById('log-level-business-logic') as HTMLSelectElement | null
+const logLevelCommands = document.getElementById('log-level-commands') as HTMLSelectElement | null
+const logLevelAi = document.getElementById('log-level-ai') as HTMLSelectElement | null
+const logLevelUi = document.getElementById('log-level-ui') as HTMLSelectElement | null
+const logLevelAuthoring = document.getElementById('log-level-authoring') as HTMLSelectElement | null
+const logLevelInfrastructure = document.getElementById('log-level-infrastructure') as HTMLSelectElement | null
+const logLevelContentScripts = document.getElementById('log-level-content-scripts') as HTMLSelectElement | null
+const resetLogLevels = document.getElementById('reset-log-levels') as HTMLButtonElement | null
+const loggingStatusMessage = document.getElementById('logging-status-message') as HTMLParagraphElement | null
 
 // Shortcut Elements
 const shortcuts = ['tasks', 'save', 'notes', 'search', 'ai'] as const
@@ -213,6 +241,9 @@ const loadSettings = async () => {
 
     aiReuseToggle.checked = settings.reuseAiTab !== false
 
+    // Load logging settings
+    loadLogLevels(settings)
+
     // Load shortcut settings
     await loadAvailableCommands()
     loadShortcutSettings(settings.shortcuts)
@@ -235,6 +266,9 @@ const loadSettings = async () => {
     showStatus(aiStatusMessage, 'Could not load assistant setting. Using ChatGPT.', 'error')
     aiSelect.value = 'chatgpt'
     aiReuseToggle.checked = true
+
+    // Load defaults for logging
+    loadLogLevels()
 
     // Load defaults for shortcuts
     await loadAvailableCommands()
@@ -304,26 +338,137 @@ aiReuseToggle.addEventListener('change', (event) => {
   persistAiReuse(target.checked)
 })
 
-const persistAiLogLevel = async (logLevel: string) => {
+// Logging Functions
+const getDefaultLogLevels = (): LogLevelSettings => ({
+  background: 'error',
+  'business-logic': 'error',
+  commands: 'error',
+  ai: 'error',
+  ui: 'error',
+  authoring: 'error',
+  infrastructure: 'error',
+  'content-scripts': 'error'
+})
+
+const loadLogLevels = (settings?: UserSettings) => {
+  const logLevels = settings?.logLevels || getDefaultLogLevels()
+
+  if (logLevelBackground) logLevelBackground.value = logLevels.background
+  if (logLevelBusinessLogic) logLevelBusinessLogic.value = logLevels['business-logic']
+  if (logLevelCommands) logLevelCommands.value = logLevels.commands
+  if (logLevelAi) logLevelAi.value = logLevels.ai
+  if (logLevelUi) logLevelUi.value = logLevels.ui
+  if (logLevelAuthoring) logLevelAuthoring.value = logLevels.authoring
+  if (logLevelInfrastructure) logLevelInfrastructure.value = logLevels.infrastructure
+  if (logLevelContentScripts) logLevelContentScripts.value = logLevels['content-scripts']
+}
+
+const saveLogLevels = async () => {
   try {
-    await sendMessage<UserSettings>({
-      type: 'UPDATE_USER_SETTINGS',
-      data: { aiLogLevel: logLevel }
+    const logLevels: LogLevelSettings = {
+      background: (logLevelBackground?.value as LogLevel) || 'error',
+      'business-logic': (logLevelBusinessLogic?.value as LogLevel) || 'error',
+      commands: (logLevelCommands?.value as LogLevel) || 'error',
+      ai: (logLevelAi?.value as LogLevel) || 'error',
+      ui: (logLevelUi?.value as LogLevel) || 'error',
+      authoring: (logLevelAuthoring?.value as LogLevel) || 'error',
+      infrastructure: (logLevelInfrastructure?.value as LogLevel) || 'error',
+      'content-scripts': (logLevelContentScripts?.value as LogLevel) || 'error'
+    }
+
+    await sendMessage({
+      type: 'UPDATE_LOG_LEVELS',
+      data: { logLevels }
     })
-    const message = logLevel === 'debug'
-      ? 'Saved. Debug logging enabled - verbose console output.'
-      : 'Saved. Info logging enabled - minimal console output.'
-    showStatus(aiStatusMessage, message, 'success')
+
+    showStatus(loggingStatusMessage, 'Saved. Reload extension to apply log level changes.', 'success')
   } catch (error) {
-    console.error('[Options] Failed to save AI log level:', error)
-    showStatus(aiStatusMessage, 'Failed to update log level. Please try again.', 'error')
+    console.error('[Options] Failed to save log levels:', error)
+    showStatus(loggingStatusMessage, 'Failed to save log levels. Please try again.', 'error')
   }
 }
 
-aiLogLevelSelect.addEventListener('change', (event) => {
-  const target = event.target as HTMLSelectElement
-  persistAiLogLevel(target.value)
+// Collapsible toggle
+if (loggingToggle && loggingContent) {
+  loggingToggle.addEventListener('click', () => {
+    const isExpanded = loggingContent.style.display !== 'none'
+    loggingContent.style.display = isExpanded ? 'none' : 'block'
+
+    const toggleIcon = loggingToggle.querySelector('.toggle-icon')
+    if (toggleIcon) {
+      toggleIcon.textContent = isExpanded ? '▶' : '▼'
+    }
+
+    const toggleLabel = loggingToggle.querySelector('.toggle-label')
+    if (toggleLabel) {
+      toggleLabel.textContent = isExpanded ? 'Show Logging Configuration' : 'Hide Logging Configuration'
+    }
+  })
+}
+
+// Global level setter
+if (logLevelGlobal) {
+  logLevelGlobal.addEventListener('change', async (event) => {
+    const target = event.target as HTMLSelectElement
+    const globalLevel = target.value as LogLevel
+
+    if (!globalLevel) return // Empty option selected
+
+    // Set all category dropdowns to the global level
+    if (logLevelBackground) logLevelBackground.value = globalLevel
+    if (logLevelBusinessLogic) logLevelBusinessLogic.value = globalLevel
+    if (logLevelCommands) logLevelCommands.value = globalLevel
+    if (logLevelAi) logLevelAi.value = globalLevel
+    if (logLevelUi) logLevelUi.value = globalLevel
+    if (logLevelAuthoring) logLevelAuthoring.value = globalLevel
+    if (logLevelInfrastructure) logLevelInfrastructure.value = globalLevel
+    if (logLevelContentScripts) logLevelContentScripts.value = globalLevel
+
+    // Save the changes
+    await saveLogLevels()
+
+    // Reset global dropdown to placeholder
+    target.value = ''
+  })
+}
+
+// Individual category dropdowns
+const categoryDropdowns = [
+  logLevelBackground,
+  logLevelBusinessLogic,
+  logLevelCommands,
+  logLevelAi,
+  logLevelUi,
+  logLevelAuthoring,
+  logLevelInfrastructure,
+  logLevelContentScripts
+]
+
+categoryDropdowns.forEach(dropdown => {
+  if (dropdown) {
+    dropdown.addEventListener('change', saveLogLevels)
+  }
 })
+
+// Reset button
+if (resetLogLevels) {
+  resetLogLevels.addEventListener('click', async () => {
+    if (!confirm('Reset all log levels to ERROR (production default)?')) return
+
+    const defaults = getDefaultLogLevels()
+
+    if (logLevelBackground) logLevelBackground.value = defaults.background
+    if (logLevelBusinessLogic) logLevelBusinessLogic.value = defaults['business-logic']
+    if (logLevelCommands) logLevelCommands.value = defaults.commands
+    if (logLevelAi) logLevelAi.value = defaults.ai
+    if (logLevelUi) logLevelUi.value = defaults.ui
+    if (logLevelAuthoring) logLevelAuthoring.value = defaults.authoring
+    if (logLevelInfrastructure) logLevelInfrastructure.value = defaults.infrastructure
+    if (logLevelContentScripts) logLevelContentScripts.value = defaults['content-scripts']
+
+    await saveLogLevels()
+  })
+}
 
 // Shortcut Management Functions
 const getDefaultShortcuts = () => ({

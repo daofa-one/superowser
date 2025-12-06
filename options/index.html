@@ -47,15 +47,166 @@
           </label>
           <p class="field-helper">When enabled, Superowser will focus the first matching assistant tab. If none is open, a new tab is created.</p>
         </div>
-        <div class="field">
-          <span class="field-label">Console log level</span>
-          <select id="ai-log-level-select" class="field-control">
-            <option value="info">Info (minimal logging)</option>
-            <option value="debug">Debug (verbose logging)</option>
-          </select>
-          <p class="field-helper">Controls the amount of console output from AI automation. Debug mode shows detailed execution logs.</p>
-        </div>
         <p id="ai-status-message" class="status"></p>
+      </section>
+
+      <section class="options-section">
+        <h2>Advanced Logging</h2>
+        <p class="section-description">
+          Control console output verbosity for different extension components.
+          <strong>Production default: ERROR level for all categories (minimal logging).</strong>
+        </p>
+
+        <!-- Collapsible Toggle -->
+        <div class="collapsible-header" id="logging-toggle">
+          <span class="toggle-icon">▶</span>
+          <span class="toggle-label">Show Logging Configuration</span>
+        </div>
+
+        <div class="collapsible-content" id="logging-content" style="display: none;">
+          <div class="logging-controls">
+
+            <!-- Global Level Control -->
+            <div class="field global-control">
+              <span class="field-label">Set All Categories</span>
+              <select id="log-level-global" class="field-control">
+                <option value="">-- Individual Settings --</option>
+                <option value="error">ERROR (Production)</option>
+                <option value="warn">WARN</option>
+                <option value="info">INFO</option>
+                <option value="debug">DEBUG (Verbose)</option>
+              </select>
+              <p class="field-helper">Quick apply same level to all categories</p>
+            </div>
+
+            <hr class="field-divider" />
+
+            <!-- Background Category -->
+            <div class="field">
+              <span class="field-label">
+                <span class="category-icon">⚙️</span> Background
+              </span>
+              <select id="log-level-background" class="field-control log-level-select">
+                <option value="error">ERROR</option>
+                <option value="warn">WARN</option>
+                <option value="info">INFO</option>
+                <option value="debug">DEBUG</option>
+              </select>
+              <p class="field-helper">Core service worker, stores, handlers</p>
+            </div>
+
+            <!-- Business Logic Category -->
+            <div class="field">
+              <span class="field-label">
+                <span class="category-icon">💼</span> Business Logic
+              </span>
+              <select id="log-level-business-logic" class="field-control log-level-select">
+                <option value="error">ERROR</option>
+                <option value="warn">WARN</option>
+                <option value="info">INFO</option>
+                <option value="debug">DEBUG</option>
+              </select>
+              <p class="field-helper">Use cases, services (search, tasks, pages)</p>
+            </div>
+
+            <!-- Commands Category -->
+            <div class="field">
+              <span class="field-label">
+                <span class="category-icon">⌨️</span> Commands
+              </span>
+              <select id="log-level-commands" class="field-control log-level-select">
+                <option value="error">ERROR</option>
+                <option value="warn">WARN</option>
+                <option value="info">INFO</option>
+                <option value="debug">DEBUG</option>
+              </select>
+              <p class="field-helper">Command parser, executor, registry</p>
+            </div>
+
+            <!-- AI Category -->
+            <div class="field">
+              <span class="field-label">
+                <span class="category-icon">🤖</span> AI
+              </span>
+              <select id="log-level-ai" class="field-control log-level-select">
+                <option value="error">ERROR</option>
+                <option value="warn">WARN</option>
+                <option value="info">INFO</option>
+                <option value="debug">DEBUG</option>
+              </select>
+              <p class="field-helper">AI automation, bridge, content script</p>
+            </div>
+
+            <!-- UI Category -->
+            <div class="field">
+              <span class="field-label">
+                <span class="category-icon">🎨</span> UI
+              </span>
+              <select id="log-level-ui" class="field-control log-level-select">
+                <option value="error">ERROR</option>
+                <option value="warn">WARN</option>
+                <option value="info">INFO</option>
+                <option value="debug">DEBUG</option>
+              </select>
+              <p class="field-helper">Sidepanel components, stores, views</p>
+            </div>
+
+            <!-- Authoring Category -->
+            <div class="field">
+              <span class="field-label">
+                <span class="category-icon">✍️</span> Authoring
+              </span>
+              <select id="log-level-authoring" class="field-control log-level-select">
+                <option value="error">ERROR</option>
+                <option value="warn">WARN</option>
+                <option value="info">INFO</option>
+                <option value="debug">DEBUG</option>
+              </select>
+              <p class="field-helper">Document editor, version manager</p>
+            </div>
+
+            <!-- Infrastructure Category -->
+            <div class="field">
+              <span class="field-label">
+                <span class="category-icon">🔧</span> Infrastructure
+              </span>
+              <select id="log-level-infrastructure" class="field-control log-level-select">
+                <option value="error">ERROR</option>
+                <option value="warn">WARN</option>
+                <option value="info">INFO</option>
+                <option value="debug">DEBUG</option>
+              </select>
+              <p class="field-helper">Logger, messaging, utilities</p>
+            </div>
+
+            <!-- Content Scripts Category -->
+            <div class="field">
+              <span class="field-label">
+                <span class="category-icon">📄</span> Content Scripts
+              </span>
+              <select id="log-level-content-scripts" class="field-control log-level-select">
+                <option value="error">ERROR</option>
+                <option value="warn">WARN</option>
+                <option value="info">INFO</option>
+                <option value="debug">DEBUG</option>
+              </select>
+              <p class="field-helper">Injected page scripts</p>
+            </div>
+
+            <hr class="field-divider" />
+
+            <!-- Reset Button -->
+            <div class="field">
+              <button type="button" id="reset-log-levels" class="preset-btn">
+                Reset to Defaults (All ERROR)
+              </button>
+              <p class="field-helper">Restore production-safe defaults</p>
+            </div>
+
+          </div>
+        </div>
+
+        <p id="logging-status-message" class="status"></p>
       </section>
 
       <section class="options-section">

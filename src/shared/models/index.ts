@@ -233,6 +233,43 @@ export interface VersionManagementSettings {
   }
 }
 
+// Logging system types
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
+
+export type LogCategory =
+  | 'background'       // Core service worker components
+  | 'business-logic'   // Use cases, services
+  | 'commands'         // Command system
+  | 'ai'              // AI automation, bridge
+  | 'ui'              // Sidepanel components
+  | 'authoring'       // Document editor
+  | 'infrastructure'  // Utils, messaging
+  | 'content-scripts' // Injected scripts
+
+export interface LogLevelSettings {
+  background: LogLevel
+  'business-logic': LogLevel
+  commands: LogLevel
+  ai: LogLevel
+  ui: LogLevel
+  authoring: LogLevel
+  infrastructure: LogLevel
+  'content-scripts': LogLevel
+}
+
+export function getDefaultLogLevels(): LogLevelSettings {
+  return {
+    background: 'error',
+    'business-logic': 'error',
+    commands: 'error',
+    ai: 'error',
+    ui: 'error',
+    authoring: 'error',
+    infrastructure: 'error',
+    'content-scripts': 'error'
+  }
+}
+
 export interface ShortcutConfig {
   command: string        // '/tasks', '/save', etc.
   parameters: string     // Default parameters
@@ -259,7 +296,7 @@ export interface UserSettings {
   preferredSearchEngine: string
   preferredAiProvider: string
   reuseAiTab: boolean
-  aiLogLevel: 'info' | 'debug'
+  logLevels: LogLevelSettings  // Component-based logging levels
   versionManagement: VersionManagementSettings
   aiAutomation?: import('../messaging/ai-types').AIAutomationSettings
   shortcuts?: {

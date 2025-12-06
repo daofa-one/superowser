@@ -1,7 +1,10 @@
 // Background store - Master state management using Strategy A
 
 import { defineStore } from 'pinia'
-import { PageEntry, TaskEntry, UserSettings } from '../../shared/models'
+import { PageEntry, TaskEntry, UserSettings, getDefaultLogLevels, type LogLevelSettings } from '../../shared/models'
+import { createLogger } from '../../shared/utils/logger'
+
+const logger = createLogger('BackgroundStore')
 
 export interface BrowserSearchQuery {
   id: string
@@ -140,7 +143,7 @@ export const useBackgroundStore = defineStore('background', {
         preferredSearchEngine: 'google',
         preferredAiProvider: 'chatgpt',
         reuseAiTab: true,
-        aiLogLevel: 'info', // Default to info level for minimal logging
+        logLevels: getDefaultLogLevels(), // Default to ERROR level for all categories
         versionManagement: {
           autoSave: {
             enabled: true,
@@ -270,12 +273,12 @@ export const useBackgroundStore = defineStore('background', {
   actions: {
     async loadSettingsFromStorage() {
       try {
-        console.log('[Background Store] Loading settings from storage...')
+        logger.debug('Loading settings from storage...')
         const result = await chrome.storage.local.get(['userSettings'])
         const stored = result?.userSettings
 
         if (stored && typeof stored === 'object') {
-          console.log('[Background Store] Found stored settings, merging with defaults...')
+          logger.debug('Found stored settings, merging with defaults...')
 
           // Safely merge version management settings
           let versionManagementSettings = this.user.settings.versionManagement
@@ -302,7 +305,7 @@ export const useBackgroundStore = defineStore('background', {
               }
             }
           } catch (vmError) {
-            console.warn('[Background Store] Error merging version management settings, using defaults:', vmError)
+            logger.warn('Error merging version management settings, using defaults:', vmError)
           }
 
           // Merge with defaults
@@ -319,26 +322,48 @@ export const useBackgroundStore = defineStore('background', {
           if (typeof this.user.settings.reuseAiTab !== 'boolean') {
             this.user.settings.reuseAiTab = true
           }
-          if (!this.user.settings.aiLogLevel || !['info', 'debug'].includes(this.user.settings.aiLogLevel)) {
-            this.user.settings.aiLogLevel = 'info' // Default to info level
+
+          // Migrate legacy aiLogLevel to new logLevels structure
+          if (!this.user.settings.logLevels && (stored as any).aiLogLevel) {
+            logger.info('Migrating legacy aiLogLevel to component-based logLevels')
+            const legacyLevel = (stored as any).aiLogLevel === 'debug' ? 'debug' : 'info'
+            this.user.settings.logLevels = {
+              background: legacyLevel,
+              'business-logic': legacyLevel,
+              commands: legacyLevel,
+              ai: legacyLevel,
+              ui: legacyLevel,
+              authoring: legacyLevel,
+              infrastructure: legacyLevel,
+              'content-scripts': legacyLevel
+            }
+            // Remove old aiLogLevel field
+            delete (this.user.settings as any).aiLogLevel
+            // Save migrated settings
+            await this.saveSettingsToStorage()
+          }
+
+          // Ensure logLevels exists with defaults
+          if (!this.user.settings.logLevels) {
+            this.user.settings.logLevels = getDefaultLogLevels()
           }
 
           // Initialize version management settings if needed
           if (!stored.versionManagement) {
-            console.log('[Background Store] Initializing version management settings with defaults')
+            logger.debug('Initializing version management settings with defaults')
             try {
               await this.saveSettingsToStorage()
             } catch (saveError) {
-              console.warn('[Background Store] Failed to save initial version management settings:', saveError)
+              logger.warn('Failed to save initial version management settings:', saveError)
             }
           }
 
           this.broadcastStateUpdate('user.settings', this.user.settings)
         } else {
-          console.log('[Background Store] No stored settings found, using defaults')
+          logger.debug('No stored settings found, using defaults')
         }
       } catch (error) {
-        console.error('[Background Store] Failed to load user settings from storage:', error)
+        logger.error('Failed to load user settings from storage:', error)
         throw error // Re-throw to help identify initialization issues
       }
     },
@@ -346,9 +371,9 @@ export const useBackgroundStore = defineStore('background', {
     async saveSettingsToStorage() {
       try {
         await chrome.storage.local.set({ userSettings: this.user.settings })
-        console.log('[Background Store] Settings saved to storage')
+        logger.debug('Settings saved to storage')
       } catch (error) {
-        console.warn('[Background Store] Failed to save settings to storage:', error)
+        logger.warn('Failed to save settings to storage:', error)
       }
     },
 
@@ -501,7 +526,7 @@ export const useBackgroundStore = defineStore('background', {
       try {
         await chrome.storage.local.set({ userSettings: this.user.settings })
       } catch (error) {
-        console.warn('[Background Store] Failed to persist user settings:', error)
+        logger.warn('Failed to persist user settings:', error)
       }
 
       this.broadcastStateUpdate('user.settings', this.user.settings)
@@ -523,7 +548,7 @@ export const useBackgroundStore = defineStore('background', {
       try {
         await chrome.storage.local.set({ userSettings: this.user.settings })
       } catch (error) {
-        console.warn('[Background Store] Failed to persist AI provider setting:', error)
+        logger.warn('Failed to persist AI provider setting:', error)
       }
 
       this.broadcastStateUpdate('user.settings', this.user.settings)
@@ -539,25 +564,35 @@ export const useBackgroundStore = defineStore('background', {
       try {
         await chrome.storage.local.set({ userSettings: this.user.settings })
       } catch (error) {
-        console.warn('[Background Store] Failed to persist AI tab preference:', error)
+        logger.warn('Failed to persist AI tab preference:', error)
       }
 
       this.broadcastStateUpdate('user.settings', this.user.settings)
     },
 
-    async setAiLogLevelPreference(logLevel: 'info' | 'debug') {
-      if (this.user.settings.aiLogLevel === logLevel) {
-        return
+    async updateLogLevels(updates: Partial<LogLevelSettings>) {
+      // Validate log levels
+      const validLevels: Array<'error' | 'warn' | 'info' | 'debug'> = ['error', 'warn', 'info', 'debug']
+
+      for (const [category, level] of Object.entries(updates)) {
+        if (!validLevels.includes(level as any)) {
+          throw new Error(`Invalid log level "${level}" for category "${category}"`)
+        }
       }
 
-      this.user.settings.aiLogLevel = logLevel
+      // Update settings
+      this.user.settings.logLevels = {
+        ...this.user.settings.logLevels,
+        ...updates
+      }
 
       try {
         await chrome.storage.local.set({ userSettings: this.user.settings })
       } catch (error) {
-        console.warn('[Background Store] Failed to persist AI log level preference:', error)
+        logger.warn('Failed to persist log levels:', error)
       }
 
+      this.broadcastStateUpdate('user.settings.logLevels', this.user.settings.logLevels)
       this.broadcastStateUpdate('user.settings', this.user.settings)
     },
 
@@ -638,13 +673,13 @@ export const useBackgroundStore = defineStore('background', {
 
         if (activeTask) {
           this.user.currentTask = activeTask
-          console.log('[Background Store] Loaded active task:', activeTask.name)
+          logger.debug('Loaded active task:', activeTask.name)
         }
 
         // Mark app as initialized
         this.app.isFirstRun = false
       } catch (error) {
-        console.error('[Background Store] Failed to initialize:', error)
+        logger.error('Failed to initialize:', error)
       }
     },
 
@@ -853,7 +888,7 @@ export const useBackgroundStore = defineStore('background', {
           return
         }
 
-        console.warn('[Background Store] Failed to broadcast state update:', message)
+        logger.warn('Failed to broadcast state update:', message)
       })
     },
 
