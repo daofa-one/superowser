@@ -28,6 +28,7 @@ Coordinator Agent (Main)
 ├── Data Agent (data & algorithms)
 ├── Code Review Agent (quality assurance)
 ├── Refactor Agent (code improvement)
+├── Release Agent (version management)
 └── CC Artifact Agent (meta-configuration)
 ```
 
@@ -41,6 +42,7 @@ Coordinator Agent (Main)
 | **Data Agent** | `agents/data-agent.md` | Database schema, search algorithms, data organization | When routed by Coordinator |
 | **Code Review Agent** | `agents/code-review-agent.md` | Code quality, security, standards compliance | After significant code changes |
 | **Refactor Agent** | `agents/refactor-agent.md` | Code restructuring, optimization, technical debt | After code review findings |
+| **Release Agent** | `agents/release-agent.md` | Version management, CHANGELOG, documentation updates | Before releases |
 | **CC Artifact Agent** | `agents/CC-artifact-agent.md` | Maintains `.claude/` configuration files | When routed by Coordinator |
 
 ### Using Agents

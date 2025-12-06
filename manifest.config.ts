@@ -17,6 +17,8 @@ export default defineManifest(async (env) => ({
   // semver is OK in "version_name"
   version_name: version,
   manifest_version: 3,
+  author: "Superowser Team",
+  homepage_url: "https://github.com/daofa-one/superowser",
   "omnibox": {
     "keyword": '`'
   },

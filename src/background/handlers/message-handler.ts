@@ -32,14 +32,6 @@ import type { DIContainer } from '../container'
  */
 export function initializeMessageHandler(container: DIContainer): void {
   chrome.runtime.onMessage.addListener((message: any, sender, sendResponse: (response?: any) => void) => {
-    console.log('[Background] Received message:', {
-      type: message.type,
-      id: message.id,
-      hasData: !!message.data,
-      sender: sender.tab ? `tab:${sender.tab.id}` : 'extension',
-      timestamp: Date.now()
-    })
-
     // Handle AI bridge messages (from content scripts) - exclude AI_RUN_PROMPT which is a command request
     const aiBridgeMessageTypes = [
       AI_MESSAGE_TYPES.AI_PROGRESS,
@@ -48,19 +40,12 @@ export function initializeMessageHandler(container: DIContainer): void {
       AI_MESSAGE_TYPES.AI_AUTOMATION_COMPLETE
     ]
     if (message.type && aiBridgeMessageTypes.includes(message.type)) {
-      console.log('[Background] Routing to AI bridge handler:', message.type)
       handleAIBridgeMessage(message, sender, container)
       sendResponse({ success: true })
       return true
     }
 
     if (!isRequestMessage(message)) {
-      console.log('[Background] Invalid message format:', {
-        type: message.type,
-        isString: typeof message.type === 'string',
-        isSuccessOrError: message.type === 'SUCCESS' || message.type === 'ERROR',
-        message
-      })
       sendResponse({
         type: 'ERROR',
         error: { message: 'Invalid message format' }
@@ -68,16 +53,12 @@ export function initializeMessageHandler(container: DIContainer): void {
       return true
     }
 
-    console.log('[Background] Valid request message, routing to handleMessage:', message.type)
-
     // Handle message asynchronously
     handleMessage(message, container)
       .then((response: ResponseMessage) => {
-        console.log('[Background] ← Success response for:', message.type, response)
         sendResponse(response)
       })
       .catch((error: Error) => {
-        console.log('[Background] ← Error response for:', message.type, error.message)
         sendResponse({
           type: 'ERROR',
           id: message.id,
@@ -110,8 +91,6 @@ function ensureContainerServices(container: DIContainer): void {
  */
 async function handleMessage(message: RequestMessage, container: DIContainer): Promise<ResponseMessage> {
   try {
-    console.log('[Background] handleMessage called with type:', message.type)
-
     // Ensure critical services are available for most operations
     // (Skip for simple GET operations that don't modify state)
     const writeOperations = ['SAVE_PAGE', 'SAVE_CURRENT_TAB', 'SAVE_NOTE', 'UPDATE_PAGE',
@@ -478,13 +457,93 @@ async function handleMessage(message: RequestMessage, container: DIContainer): P
         break
 
       case 'EXPORT_DATA':
-        // TODO: Implement data export
-        data = { message: 'Export not yet implemented' }
+        // Export all user data to JSON
+        try {
+          const [pages, notes, tasks, documents] = await Promise.all([
+            container.pageService.getAll(),
+            container.noteService.getAll(),
+            container.taskService.getAll(),
+            container.documentService.getAll()
+          ])
+
+          const exportData = {
+            version: '1.0.0',
+            exportDate: new Date().toISOString(),
+            data: {
+              pages,
+              notes,
+              tasks,
+              documents
+            }
+          }
+
+          data = {
+            success: true,
+            data: exportData,
+            message: `Exported ${pages.length} pages, ${notes.length} notes, ${tasks.length} tasks, ${documents.length} documents`
+          }
+        } catch (error) {
+          data = {
+            success: false,
+            error: error instanceof Error ? error.message : 'Export failed'
+          }
+        }
         break
 
       case 'IMPORT_DATA':
-        // TODO: Implement data import
-        data = { message: 'Import not yet implemented' }
+        // Import data from JSON
+        try {
+          const importData = message.data?.importData
+
+          if (!importData || !importData.data) {
+            throw new Error('Invalid import data format')
+          }
+
+          const { pages = [], notes = [], tasks = [], documents = [] } = importData.data
+
+          // Import data in order: tasks first (as they may be referenced), then pages, notes, documents
+          let imported = {
+            tasks: 0,
+            pages: 0,
+            notes: 0,
+            documents: 0
+          }
+
+          // Import tasks
+          for (const task of tasks) {
+            await container.taskService.create(task)
+            imported.tasks++
+          }
+
+          // Import pages
+          for (const page of pages) {
+            await container.pageService.create(page)
+            imported.pages++
+          }
+
+          // Import notes
+          for (const note of notes) {
+            await container.noteService.create(note)
+            imported.notes++
+          }
+
+          // Import documents
+          for (const document of documents) {
+            await container.documentService.create(document)
+            imported.documents++
+          }
+
+          data = {
+            success: true,
+            imported,
+            message: `Imported ${imported.pages} pages, ${imported.notes} notes, ${imported.tasks} tasks, ${imported.documents} documents`
+          }
+        } catch (error) {
+          data = {
+            success: false,
+            error: error instanceof Error ? error.message : 'Import failed'
+          }
+        }
         break
 
       case 'SAVE_SHORTCUT':
@@ -568,39 +627,6 @@ async function handleMessage(message: RequestMessage, container: DIContainer): P
         data = await testAISelectors(message.data.provider, message.data.selectors, container)
         break
 
-      case 'AI_TEST_AUTOMATION':
-        // Test command for verifying automation works
-        console.log('[AI Test] Running automation test...')
-        data = await handleAIRunPrompt({
-          prompt: message.data?.prompt || 'Hello, this is a test from Superowser extension',
-          context: {
-            currentTask: 'test',
-            documentTitle: 'Automation Test'
-          }
-        }, container)
-        break
-
-      case 'AI_TEST_INJECTION':
-        // Test content script injection
-        console.log('[AI Test] Testing content script injection...')
-        try {
-          const tab = await findOrCreateAITab('chatgpt', container)
-          console.log('[AI Test] Tab found/created:', tab.id)
-          await injectAIContentScript(tab.id!)
-          console.log('[AI Test] Content script injected successfully')
-
-          // Test if bridge is available
-          const results = await chrome.scripting.executeScript({
-            target: { tabId: tab.id! },
-            func: () => window.hasOwnProperty('superowserAIBridge')
-          })
-          console.log('[AI Test] Bridge available:', results[0]?.result)
-          data = { success: true, bridgeAvailable: results[0]?.result }
-        } catch (error) {
-          console.error('[AI Test] Injection failed:', error)
-          data = { success: false, error: (error as Error).message }
-        }
-        break
 
       default:
         throw new Error(`Unknown message type: ${(message as any).type}`)
