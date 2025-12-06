@@ -381,7 +381,6 @@ Contributions are welcome! Please:
 ## 📞 Support
 
 - **Issues**: [GitHub Issues](https://github.com/daofa-one/superowser/issues)
-- **Email**: [Your support email]
 - **Documentation**: See Help view in side panel
 
 ---

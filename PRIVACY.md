@@ -120,8 +120,7 @@ Continued use of the extension after changes constitutes acceptance of the updat
 
 If you have questions or concerns about this privacy policy or your data:
 
-- **GitHub Issues**: [Create an issue on our repository]
-- **Email**: [Your support email]
+- **GitHub Issues**: [GitHub Issues](https://github.com/daofa-one/superowser/issues)
 
 ## Permissions Explained
 
