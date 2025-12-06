@@ -9,6 +9,9 @@ import TaskCreator from './task/TaskCreator.vue'
 import TaskShortcuts from './task/TaskShortcuts.vue'
 import SearchResultList from './search/SearchResultList.vue'
 import { DEFAULT_SHORTCUTS } from './task/shortcuts-config'
+import { createLogger } from '../../shared/utils/logger'
+
+const logger = createLogger('ChatBox')
 
 type ChatHistoryEntry = (BrowserChatMessage | ExtensionChatMessage) & { timestamp: Date }
 
@@ -67,7 +70,7 @@ const runChatCommand = async (command: string) => {
   try {
     await store.sendExtensionChat(command)
   } catch (error) {
-    console.error('[ChatBox] Command execution failed:', command, error)
+    logger.error('Command execution failed:', command, error)
     store.addNotification({
       type: 'error',
       message: 'Failed to execute command. Check console for details.'
@@ -77,7 +80,7 @@ const runChatCommand = async (command: string) => {
 
 // Global error handler for component errors
 onErrorCaptured((error: Error, instance: any, errorInfo: string) => {
-  console.error('[ChatBox] Component error captured:', error, errorInfo)
+  logger.error('Component error captured:', error, errorInfo)
 
   // Store error for display
   const componentId = instance?.$.uid || 'unknown'
@@ -271,7 +274,7 @@ const loadShortcuts = (settings: any) => {
 // Listen for settings updates from background
 const handleSettingsUpdate = (message: any) => {
   if (message.type === 'STATE_UPDATE' && message.path === 'user.settings') {
-    console.log('[ChatBox] Settings updated, reloading shortcuts')
+    logger.debug('Settings updated, reloading shortcuts')
     loadShortcuts(message.value)
   }
 }
@@ -286,7 +289,7 @@ onMounted(async () => {
     const settings = await store.sendMessage({ type: 'GET_USER_SETTINGS' })
     loadShortcuts(settings)
   } catch (error) {
-    console.error('[ChatBox] Failed to load shortcut settings:', error)
+    logger.error('Failed to load shortcut settings:', error)
     // Keep defaults if loading fails
     userShortcuts.value = DEFAULT_SHORTCUTS
   }
@@ -339,33 +342,33 @@ const fetchSuggestions = async (input: string) => {
       clearSuggestions()
     }
   } catch (error) {
-    console.error('Failed to load command suggestions:', error)
+    logger.error('Failed to load command suggestions:', error)
     clearSuggestions()
   }
 }
 
 watch(inputValue, (value, oldValue) => {
-  console.log('[ChatBox] ========== inputValue changed ==========')
-  console.log('[ChatBox] Old value:', JSON.stringify(oldValue))
-  console.log('[ChatBox] New value:', JSON.stringify(value))
-  console.log('[ChatBox] justFilledFromShortcut:', justFilledFromShortcut.value)
+  logger.debug('========== inputValue changed ==========')
+  logger.debug('Old value:', JSON.stringify(oldValue))
+  logger.debug('New value:', JSON.stringify(value))
+  logger.debug('justFilledFromShortcut:', justFilledFromShortcut.value)
 
   // Don't trigger autocomplete if we just filled from a shortcut
   if (justFilledFromShortcut.value) {
-    console.log('[ChatBox] Blocked - just filled from shortcut, skipping ALL processing')
+    logger.debug('Blocked - just filled from shortcut, skipping ALL processing')
     // Don't do anything - just wait for the flag to be cleared by the timeout
     return
   }
 
   if (value.startsWith('/')) {
-    console.log('[ChatBox] Calling fetchSuggestions')
+    logger.debug('Calling fetchSuggestions')
     // Update cursor position before fetching (wait for DOM to update)
     nextTick(() => {
       handleCursorChange()
       fetchSuggestions(value)
     })
   } else {
-    console.log('[ChatBox] Clearing suggestions')
+    logger.debug('Clearing suggestions')
     clearSuggestions()
   }
 })
@@ -453,23 +456,23 @@ const handleKeydown = (event: KeyboardEvent) => {
 }
 
 const sendMessage = async () => {
-  console.log('[ChatBox] ========== sendMessage called ==========')
-  console.trace('[ChatBox] Call stack for sendMessage')
+  logger.debug('========== sendMessage called ==========')
+  logger.debug('Call stack for sendMessage')
 
   // GUARD: Don't execute if we just filled from a shortcut
   if (justFilledFromShortcut.value) {
-    console.log('[ChatBox] ❌ BLOCKED - sendMessage called while justFilledFromShortcut is true')
-    console.log('[ChatBox] This prevents auto-execution after Shift+Click')
+    logger.debug('❌ BLOCKED - sendMessage called while justFilledFromShortcut is true')
+    logger.debug('This prevents auto-execution after Shift+Click')
     return
   }
 
   const content = inputValue.value.trim()
   if (!content || isSending.value) {
-    console.log('[ChatBox] sendMessage aborted - empty or already sending')
+    logger.debug('sendMessage aborted - empty or already sending')
     return
   }
 
-  console.log('[ChatBox] ✅ Sending message:', content)
+  logger.debug('✅ Sending message:', content)
   isSending.value = true
   try {
     await store.sendExtensionChat(content)
@@ -586,7 +589,7 @@ const saveAiNote = async () => {
     })
     closeSaveAiModal()
   } catch (error) {
-    console.error('Failed to save AI response:', error)
+    logger.error('Failed to save AI response:', error)
     store.addNotification({
       type: 'error',
       message: 'Failed to save AI response'
@@ -636,7 +639,7 @@ const handleTaskActivated = async (task: any) => {
 }
 
 const handleTaskDeleted = async (task: any) => {
-  console.log('Task deleted:', task)
+  logger.debug('Task deleted:', task)
   if (!task?.name) {
     store.addNotification({
       type: 'error',
@@ -665,7 +668,7 @@ const handleTaskDeleted = async (task: any) => {
       throw new Error(response?.message || 'Unknown error')
     }
   } catch (error) {
-    console.error('[ChatBox] Failed to delete task:', error)
+    logger.error('Failed to delete task:', error)
     store.addNotification({
       type: 'error',
       message: `Failed to delete task: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -682,7 +685,7 @@ const handleTaskCreateRequested = async () => {
 }
 
 const handleTaskEdit = (task: any) => {
-  console.log('Task edit requested:', task)
+  logger.debug('Task edit requested:', task)
   // Auto-fill the input with /edittask command (if it exists) or newtask with pre-filled data
   inputValue.value = `/newtask --name="${task.name}"${task.description ? ` --description="${task.description}"` : ''} --activate=false `
   nextTick(() => {
@@ -717,7 +720,7 @@ const handleTaskViewDetails = async (task: any) => {
 
 // Search result component event handlers
 const handlePageOpen = (url: string, pageId: string) => {
-  console.log('[ChatBox] Page opened:', url, pageId)
+  logger.debug('Page opened:', url, pageId)
   store.addNotification({
     type: 'success',
     message: 'Page opened in new tab'
@@ -725,7 +728,7 @@ const handlePageOpen = (url: string, pageId: string) => {
 }
 
 const handleNoteView = (noteId: string) => {
-  console.log('[ChatBox] Note view requested:', noteId)
+  logger.debug('Note view requested:', noteId)
   // Future: Navigate to note detail view
   store.addNotification({
     type: 'info',
@@ -734,7 +737,7 @@ const handleNoteView = (noteId: string) => {
 }
 
 const handleDocumentOpen = (documentId: string) => {
-  console.log('[ChatBox] Document open requested:', documentId)
+  logger.debug('Document open requested:', documentId)
   // Future: Open document in editor
   store.addNotification({
     type: 'info',
@@ -744,28 +747,28 @@ const handleDocumentOpen = (documentId: string) => {
 
 // Shortcut event handlers
 const handleShortcutExecuted = async (shortcut: any, options?: { autoExecute: boolean }) => {
-  console.log('[ChatBox] ========== handleShortcutExecuted ==========')
-  console.log('[ChatBox] shortcut.id:', shortcut?.id)
-  console.log('[ChatBox] shortcut.command:', shortcut?.command)
-  console.log('[ChatBox] shortcut.parameters:', shortcut?.parameters)
-  console.log('[ChatBox] options:', JSON.stringify(options))
-  console.log('[ChatBox] typeof options:', typeof options)
-  console.log('[ChatBox] options?.autoExecute:', options?.autoExecute)
+  logger.debug('========== handleShortcutExecuted ==========')
+  logger.debug('shortcut.id:', shortcut?.id)
+  logger.debug('shortcut.command:', shortcut?.command)
+  logger.debug('shortcut.parameters:', shortcut?.parameters)
+  logger.debug('options:', JSON.stringify(options))
+  logger.debug('typeof options:', typeof options)
+  logger.debug('options?.autoExecute:', options?.autoExecute)
 
   // Determine if we should auto-execute based on options or shortcut.autoExecute
   const shouldAutoExecute = options?.autoExecute === true || shortcut.autoExecute
 
-  console.log('[ChatBox] Final decision - shouldAutoExecute:', shouldAutoExecute)
+  logger.debug('Final decision - shouldAutoExecute:', shouldAutoExecute)
 
   // Append parameters if configured
   const fullCommand = shortcut.parameters
     ? `${shortcut.command} ${shortcut.parameters}`.trim()
     : shortcut.command
 
-  console.log('[ChatBox] Full command with parameters:', fullCommand)
+  logger.debug('Full command with parameters:', fullCommand)
 
   if (shouldAutoExecute) {
-    console.log('[ChatBox] AUTO-EXECUTING command:', fullCommand)
+    logger.debug('AUTO-EXECUTING command:', fullCommand)
     // Execute command immediately with configured parameters
     try {
       await store.sendExtensionChat(fullCommand)
@@ -774,7 +777,7 @@ const handleShortcutExecuted = async (shortcut: any, options?: { autoExecute: bo
         scrollToBottom()
       }, 100)
     } catch (error) {
-      console.error('[ChatBox] Auto-execute failed:', error)
+      logger.error('Auto-execute failed:', error)
       store.addNotification({
         type: 'error',
         message: 'Failed to execute command. Try again with parameters.'
@@ -786,7 +789,7 @@ const handleShortcutExecuted = async (shortcut: any, options?: { autoExecute: bo
       })
     }
   } else {
-    console.log('[ChatBox] FILLING INPUT with command:', fullCommand)
+    logger.debug('FILLING INPUT with command:', fullCommand)
 
     // Set flag to prevent auto-submission
     justFilledFromShortcut.value = true
@@ -805,18 +808,18 @@ const handleShortcutExecuted = async (shortcut: any, options?: { autoExecute: bo
       // Clear the flag after a short delay to allow normal autocomplete
       setTimeout(() => {
         justFilledFromShortcut.value = false
-        console.log('[ChatBox] Re-enabling autocomplete')
+        logger.debug('Re-enabling autocomplete')
       }, 100)
     })
   }
 }
 
 const handleShortcutCustomize = () => {
-  console.log('[ChatBox] Shortcut customization requested')
+  logger.debug('Shortcut customization requested')
   try {
     chrome.runtime.openOptionsPage()
   } catch (error) {
-    console.error('[ChatBox] Failed to open options page:', error)
+    logger.error('Failed to open options page:', error)
     store.addNotification({
       type: 'error',
       message: 'Failed to open options page. Please try again.'
@@ -846,7 +849,7 @@ const handleTaskCreate = async (data: { name: string; description?: string; acti
 }
 
 const handleTaskUpdate = async (data: { task: any; name: string; description?: string; activate: boolean }) => {
-  console.log('Updating task:', data)
+  logger.debug('Updating task:', data)
 
   if (!data?.task?.id) {
     store.addNotification({
@@ -893,7 +896,7 @@ const handleTaskUpdate = async (data: { task: any; name: string; description?: s
       throw new Error(response?.message || 'Unknown error')
     }
   } catch (error) {
-    console.error('[ChatBox] Failed to update task:', error)
+    logger.error('Failed to update task:', error)
     store.addNotification({
       type: 'error',
       message: `Failed to update task: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -902,7 +905,7 @@ const handleTaskUpdate = async (data: { task: any; name: string; description?: s
 }
 
 const handleTaskCreatorCancel = () => {
-  console.log('Task creator cancelled')
+  logger.debug('Task creator cancelled')
   // Could potentially remove the creator bubble from chat or just let user continue
 }
 </script>
@@ -1093,7 +1096,7 @@ const handleTaskCreatorCancel = () => {
                 @note-view="handleNoteView"
                 @task-activate="handleTaskActivated"
                 @document-open="handleDocumentOpen"
-                @result-click="(item) => console.log('[ChatBox] Result clicked:', item)"
+                @result-click="(item) => logger.debug('Result clicked:', item)"
               />
             </div>
 
